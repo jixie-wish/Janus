@@ -1,13 +1,13 @@
 package com.wish.llm;
 
 import lombok.Getter;
-import lombok.Setter;
 import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -22,35 +22,29 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class LLMChatClient {
+
     @Getter
-    @Setter
     private final ChatClient chatClient;
 
     @Getter
-    @Setter
     private final ChatModel chatModel;
 
     @Getter
-    @Setter
     private final ChatMemory chatMemory;
 
     @Getter
-    @Setter
     private final Advisor advisor;
 
     @Getter
-    @Setter
     private final List<Object> defaultTools;
 
-    @Getter
-    @Setter
     private final List<Object> extraTools;
 
     public LLMChatClient(ChatModel chatModel, Advisor advisor, ChatMemory chatMemory, List<Object> defaultTools) {
         this.chatMemory = chatMemory;
         this.chatModel = chatModel;
         this.advisor = advisor;
-        this.defaultTools = defaultTools;
+        this.defaultTools = List.copyOf(defaultTools);
         this.chatClient = ChatClient
                 .builder(chatModel)
                 .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
@@ -62,12 +56,13 @@ public class LLMChatClient {
         this.chatMemory = MessageWindowChatMemory.builder().build();
         this.chatModel = chatModel;
         this.advisor = MessageChatMemoryAdvisor.builder(chatMemory).build();
-        this.defaultTools = defaultTools;
-        this.chatClient = ChatClient
-                .builder(chatModel)
-                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
-                .defaultTools(defaultTools)
-                .build();
+        this.defaultTools = List.copyOf(defaultTools);
+        var builder = ChatClient.builder(chatModel)
+                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build());
+        if (!this.defaultTools.isEmpty()) {
+            builder.defaultTools(this.defaultTools);
+        }
+        this.chatClient = builder.build();
         this.extraTools = new ArrayList<>();
     }
 
@@ -75,56 +70,83 @@ public class LLMChatClient {
         this.extraTools.addAll(tools);
     }
 
-
     public boolean isStuck(String conversation, int duplicateThreshold) {
         List<Message> messages = this.chatMemory.get(conversation);
-        if(messages.size() < 2) {
-            return false;
-        }
-        Message lastMessage = messages.getLast();
-        if(lastMessage.getText().isBlank()) {
+        if (messages.size() < 2) {
             return false;
         }
 
-        long duplicate = messages.stream().filter(
-                message ->
-                        message.getMessageType()== MessageType.ASSISTANT && message.getText().equals(lastMessage.getText()))
+        final String lastAssistantText = getLastAssistantText(conversation);
+        if (lastAssistantText.isBlank()) {
+            return false;
+        }
+
+        long duplicate = messages.stream()
+                .filter(message -> message.getMessageType() == MessageType.ASSISTANT
+                        && lastAssistantText.equals(message.getText()))
                 .count();
         return duplicate > duplicateThreshold;
     }
 
+    public String getLastAssistantText(String conversation) {
+        List<Message> messages = chatMemory.get(conversation);
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            Message message = messages.get(i);
+            if (message instanceof AssistantMessage assistant) {
+                String text = assistant.getText();
+                if (text != null && !text.isBlank()) {
+                    return text;
+                }
+            }
+        }
+        return "";
+    }
+
     public void addUserMemory(String memory, String conversation) {
-        UserMessage userMessage = new UserMessage(memory);
-        addMemory(userMessage, conversation);
+        addMemory(new UserMessage(memory), conversation);
     }
 
     public void addSystemMemory(String memory, String conversation) {
-        SystemMessage systemMessage = new SystemMessage(memory);
-        addMemory(systemMessage, conversation);
+        addMemory(new SystemMessage(memory), conversation);
     }
 
-    public void addMemory(List<Message> messages, String conversation) {
-        List<Message> history = chatMemory.get(conversation);
-        history.addAll(messages);
-        chatMemory.add(conversation, history);
+    /**
+     * Replaces the entire conversation memory.
+     * <p>
+     * {@link ChatMemory#add(String, List)} appends to existing messages (see
+     * {@link org.springframework.ai.chat.memory.MessageWindowChatMemory#add}).
+     * Use this when persisting a full snapshot such as {@code ToolExecutionResult#conversationHistory()}.
+     */
+    public void replaceMemory(List<Message> messages, String conversation) {
+        chatMemory.clear(conversation);
+        if (messages != null && !messages.isEmpty()) {
+            chatMemory.add(conversation, messages);
+        }
     }
 
+    /**
+     * Appends a single message to the conversation memory.
+     */
     public void addMemory(Message message, String conversation) {
-        // Spring AI always set, not append memory
-        List<Message> history = chatMemory.get(conversation);
-        history.add(message);
-        chatMemory.add(conversation, history);
+        chatMemory.add(conversation, message);
     }
 
     public Pair<ChatResponse, Prompt> askWithTools(String conversation, List<String> newMessages, List<Object> tools) {
         List<Object> currentTools = new ArrayList<>();
+        currentTools.addAll(defaultTools);
         currentTools.addAll(extraTools);
         currentTools.addAll(tools);
-        List<Message> messages = new ArrayList<>(chatMemory.get(conversation));
 
-        for(String user : newMessages) {
-            messages.add(new UserMessage(user));
+        List<Message> messages = new ArrayList<>(chatMemory.get(conversation));
+        for (String user : newMessages) {
+            if (user == null || user.isBlank()) {
+                continue;
+            }
+            UserMessage userMessage = new UserMessage(user);
+            messages.add(userMessage);
+            chatMemory.add(conversation, userMessage);
         }
+
         ToolCallingChatOptions options = ToolCallingChatOptions.builder()
                 .toolCallbacks(ToolCallbacks.from(currentTools.toArray()))
                 .internalToolExecutionEnabled(false)
