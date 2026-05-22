@@ -1,5 +1,7 @@
 package com.wish.service;
 
+import com.wish.agentsession.CachedAgentSession;
+import com.wish.agentsession.ToolCallAgentSession;
 import com.wish.agent.ToolCallAgent;
 import com.wish.llm.LLMChatClient;
 import lombok.extern.slf4j.Slf4j;
@@ -20,25 +22,29 @@ public class ToolCallService {
 
     private static final String MCP_TOOL_CALLBACK_PROVIDER = "mcpToolCallbackProvider";
 
-    private final Map<String, ChatModel> chatModels;
-    private final List<Object> extraTools;
-    private final int maxSteps;
-    private final Map<String, AgentSession> sessions = new ConcurrentHashMap<>();
+    protected final Map<String, ChatModel> chatModels;
+    protected final List<Object> mcpTools;
+    protected final int maxSteps;
+    private final Map<String, CachedAgentSession> sessions = new ConcurrentHashMap<>();
 
     public ToolCallService(
             ApplicationContext applicationContext,
             @Value("${janus.agent.max-steps:10}") int maxSteps) {
         this.chatModels = resolveChatModels(applicationContext);
-        this.extraTools = resolveExtraTools(applicationContext);
+        this.mcpTools = resolveMcpTools(applicationContext);
         this.maxSteps = maxSteps;
+        logStartup();
+    }
+
+    protected void logStartup() {
         log.info("Registered chat models: {}", chatModels.keySet());
         chatModels.forEach((alias, model) -> {
             if (model instanceof OpenAiChatModel openAi) {
                 log.info("OpenAI chat model alias '{}' -> api model '{}'", alias, openAi.getOptions().getModel());
             }
         });
-        if (!extraTools.isEmpty()) {
-            log.info("Loaded {} extra tool(s) (e.g. MCP)", extraTools.size());
+        if (!mcpTools.isEmpty()) {
+            log.info("Loaded {} MCP tool(s)", mcpTools.size());
         }
     }
 
@@ -65,13 +71,13 @@ public class ToolCallService {
         boolean ephemeral = normalizedConversationId == null;
         String conversationKey = ephemeral ? UUID.randomUUID().toString() : normalizedConversationId;
 
-        AgentSession session;
+        CachedAgentSession session;
         if (ephemeral) {
             session = createSession(chatModel);
             log.debug("Ephemeral conversation {}", conversationKey);
         } else {
             String sessionKey = sessionKey(modelKey, conversationKey);
-            AgentSession existing = sessions.get(sessionKey);
+            CachedAgentSession existing = sessions.get(sessionKey);
             if (existing != null) {
                 session = existing;
                 log.info("Reusing conversation session '{}' (model={})", conversationKey, modelKey);
@@ -95,7 +101,7 @@ public class ToolCallService {
         if (normalized == null) {
             throw new IllegalArgumentException("conversation-id is required");
         }
-        AgentSession removed = sessions.remove(sessionKey(modelKey, normalized));
+        CachedAgentSession removed = sessions.remove(sessionKey(modelKey, normalized));
         if (removed == null) {
             log.info("No session to clear for conversation '{}' (model={})", normalized, modelKey);
         } else {
@@ -103,17 +109,17 @@ public class ToolCallService {
         }
     }
 
-    private AgentSession createSession(ChatModel chatModel) {
+    protected CachedAgentSession createSession(ChatModel chatModel) {
         LLMChatClient llmChatClient = new LLMChatClient(chatModel, Collections.emptyList());
-        ToolCallAgent agent = new ToolCallAgent(llmChatClient, maxSteps, extraTools);
-        return new AgentSession(llmChatClient, agent);
+        ToolCallAgent agent = new ToolCallAgent(llmChatClient, maxSteps, mcpTools);
+        return new ToolCallAgentSession(llmChatClient, agent);
     }
 
-    private static String sessionKey(String modelKey, String conversationId) {
+    protected static String sessionKey(String modelKey, String conversationId) {
         return modelKey + ":" + conversationId;
     }
 
-    private static String normalizeConversationId(String conversationId) {
+    protected static String normalizeConversationId(String conversationId) {
         if (conversationId == null) {
             return null;
         }
@@ -121,7 +127,7 @@ public class ToolCallService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    private static Map<String, ChatModel> resolveChatModels(ApplicationContext context) {
+    protected static Map<String, ChatModel> resolveChatModels(ApplicationContext context) {
         Map<String, ChatModel> models = new LinkedHashMap<>();
         context.getBeansOfType(ChatModel.class).forEach((beanName, chatModel) -> {
             String alias = aliasForBeanName(beanName);
@@ -136,10 +142,7 @@ public class ToolCallService {
         return chatModels.keySet();
     }
 
-    /**
-     * Maps Spring bean names from spring-ai starters to CLI aliases.
-     */
-    private static String aliasForBeanName(String beanName) {
+    protected static String aliasForBeanName(String beanName) {
         String lower = beanName.toLowerCase(Locale.ROOT);
         if (lower.contains("sensenova") || lower.contains("openai")) {
             return "sensenova";
@@ -147,11 +150,11 @@ public class ToolCallService {
         return null;
     }
 
-    private static String normalizeModelAlias(String model) {
+    protected static String normalizeModelAlias(String model) {
         return model == null ? "" : model.trim().toLowerCase(Locale.ROOT);
     }
 
-    private static List<Object> resolveExtraTools(ApplicationContext context) {
+    protected static List<Object> resolveMcpTools(ApplicationContext context) {
         if (!context.containsBean(MCP_TOOL_CALLBACK_PROVIDER)) {
             log.debug("Bean '{}' not found; MCP tools disabled", MCP_TOOL_CALLBACK_PROVIDER);
             return List.of();

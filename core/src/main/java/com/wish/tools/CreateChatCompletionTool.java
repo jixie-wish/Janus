@@ -3,8 +3,8 @@ package com.wish.tools;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
-/** OpenManus ToolCallAgent defaults: CreateChatCompletion + Terminate (app/agent/toolcall.py). */
-public class ChatLifecycleTool {
+/** OpenManus {@code app.tool.create_chat_completion.CreateChatCompletion}. */
+public class CreateChatCompletionTool {
 
     @Tool(
             name = "create_chat_completion",
@@ -16,14 +16,5 @@ public class ChatLifecycleTool {
                     required = true)
             String response) {
         return response;
-    }
-
-    @Tool(
-            name = "terminate",
-            description = "End the session after the answer was already sent via create_chat_completion. "
-                    + "Call alone in a separate turn with status success or failed; never use for the answer body.")
-    public String terminate(
-            @ToolParam(description = "The finish status of the interaction.", required = true) String status) {
-        return "The interaction has been completed with status: " + status;
     }
 }

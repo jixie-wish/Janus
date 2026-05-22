@@ -2,7 +2,8 @@ package com.wish.agent;
 
 import com.wish.llm.LLMChatClient;
 import com.wish.models.AgentState;
-import com.wish.tools.ChatLifecycleTool;
+import com.wish.tools.CreateChatCompletionTool;
+import com.wish.tools.TerminateTool;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -35,8 +36,10 @@ public class ToolCallAgent extends ReactAgent {
             - Do not send a follow-up summary as assistant text after answering.
             """;
 
-    private static final List<Object> DEFAULT_TOOLS = List.of(new ChatLifecycleTool());
-    private final List<Object> extraTools = new ArrayList<>();
+    private static final List<Object> DEFAULT_BUILTIN_TOOLS =
+            List.of(new CreateChatCompletionTool(), new TerminateTool());
+
+    private final List<Object> mcpTools = new ArrayList<>();
 
     private final ToolCallingManager toolCallingManager;
 
@@ -48,14 +51,26 @@ public class ToolCallAgent extends ReactAgent {
         this(llmChatClient, maxSteps, List.of());
     }
 
-    public ToolCallAgent(LLMChatClient llmChatClient, int maxSteps, List<Object> extraTools) {
-        super(NAME, DESCRIPTION, SYSTEM_PROMPT, NEXT_STEP_PROMPT, llmChatClient, maxSteps);
-        if (extraTools != null && !extraTools.isEmpty()) {
-            this.extraTools.addAll(extraTools);
+    public ToolCallAgent(LLMChatClient llmChatClient, int maxSteps, List<Object> mcpTools) {
+        this(NAME, DESCRIPTION, SYSTEM_PROMPT, NEXT_STEP_PROMPT, llmChatClient, maxSteps, mcpTools, DEFAULT_BUILTIN_TOOLS);
+    }
+
+    protected ToolCallAgent(
+            String name,
+            String description,
+            String systemPrompt,
+            String nextStepPrompt,
+            LLMChatClient llmChatClient,
+            int maxSteps,
+            List<Object> mcpTools,
+            List<Object> builtinTools) {
+        super(name, description, systemPrompt, nextStepPrompt, llmChatClient, maxSteps);
+        if (mcpTools != null && !mcpTools.isEmpty()) {
+            this.mcpTools.addAll(mcpTools);
         }
-        chatClient.addTools(DEFAULT_TOOLS);
-        if (!this.extraTools.isEmpty()) {
-            chatClient.addTools(List.copyOf(this.extraTools));
+        chatClient.addTools(builtinTools);
+        if (!this.mcpTools.isEmpty()) {
+            chatClient.addTools(List.copyOf(this.mcpTools));
         }
         toolCallingManager = ToolCallingManager.builder().build();
     }
