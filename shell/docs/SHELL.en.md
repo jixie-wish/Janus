@@ -68,19 +68,30 @@ When you see `shell:>`, the app is ready.
 ### tool-call request
 
 ```text
-tool-call request --prompt "<task>" [--model sensenova]
+tool-call request --prompt "<task>" [--model sensenova] [--conversation-id <id>]
 ```
 
 | Option | Short | Required | Default | Description |
 |--------|-------|----------|---------|-------------|
 | `--prompt` | `-p` | yes | — | User message to the agent |
 | `--model` | `-m` | no | `sensenova` | CLI model alias (maps to configured ChatModel) |
+| `--conversation-id` | `-c` | no | — | Reuse in-process memory across requests in the same shell session |
 
 Examples:
 
 ```text
 shell:> tool-call request -p "hello"
 shell:> tool-call request --prompt "Describe Janus in one sentence" -m sensenova
+shell:> tool-call request -p "Tell me about China" -c demo
+shell:> tool-call request -p "What did I ask just now" -c demo
+```
+
+With `-c`, the first line of output echoes `conversation-id: ...`. Memory lasts only for the **current shell process** (lost after exit).
+
+Clear cached session:
+
+```text
+shell:> tool-call clear-session -c demo
 ```
 
 Output is multi-line text such as `Step 1: ...`, `Step 2: ...` (per-step agent output).

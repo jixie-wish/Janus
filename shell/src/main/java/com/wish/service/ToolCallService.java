@@ -11,13 +11,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
@@ -28,6 +23,7 @@ public class ToolCallService {
     private final Map<String, ChatModel> chatModels;
     private final List<Object> extraTools;
     private final int maxSteps;
+    private final Map<String, AgentSession> sessions = new ConcurrentHashMap<>();
 
     public ToolCallService(
             ApplicationContext applicationContext,
@@ -47,6 +43,14 @@ public class ToolCallService {
     }
 
     public String run(String prompt, String model) {
+        return run(prompt, model, null);
+    }
+
+    /**
+     * @param conversationId optional; when set, reuses in-process memory for the same id and model.
+     *                       When null/blank, uses a one-off id (not cached).
+     */
+    public String run(String prompt, String model, String conversationId) {
         String modelKey = normalizeModelAlias(model);
         ChatModel chatModel = chatModels.get(modelKey);
         if (chatModel == null) {
@@ -57,10 +61,64 @@ public class ToolCallService {
                     "Unknown model '%s'. Available: %s".formatted(model, available));
         }
 
+        String normalizedConversationId = normalizeConversationId(conversationId);
+        boolean ephemeral = normalizedConversationId == null;
+        String conversationKey = ephemeral ? UUID.randomUUID().toString() : normalizedConversationId;
+
+        AgentSession session;
+        if (ephemeral) {
+            session = createSession(chatModel);
+            log.debug("Ephemeral conversation {}", conversationKey);
+        } else {
+            String sessionKey = sessionKey(modelKey, conversationKey);
+            AgentSession existing = sessions.get(sessionKey);
+            if (existing != null) {
+                session = existing;
+                log.info("Reusing conversation session '{}' (model={})", conversationKey, modelKey);
+            } else {
+                session = createSession(chatModel);
+                sessions.put(sessionKey, session);
+                log.info("New conversation session '{}' (model={})", conversationKey, modelKey);
+            }
+        }
+
+        String result = session.agent().run(conversationKey, prompt);
+        if (ephemeral) {
+            return result;
+        }
+        return "conversation-id: %s%n%s".formatted(conversationKey, result);
+    }
+
+    public void clearSession(String conversationId, String model) {
+        String modelKey = normalizeModelAlias(model);
+        String normalized = normalizeConversationId(conversationId);
+        if (normalized == null) {
+            throw new IllegalArgumentException("conversation-id is required");
+        }
+        AgentSession removed = sessions.remove(sessionKey(modelKey, normalized));
+        if (removed == null) {
+            log.info("No session to clear for conversation '{}' (model={})", normalized, modelKey);
+        } else {
+            log.info("Cleared conversation session '{}' (model={})", normalized, modelKey);
+        }
+    }
+
+    private AgentSession createSession(ChatModel chatModel) {
         LLMChatClient llmChatClient = new LLMChatClient(chatModel, Collections.emptyList());
         ToolCallAgent agent = new ToolCallAgent(llmChatClient, maxSteps, extraTools);
-        String conversationId = UUID.randomUUID().toString();
-        return agent.run(conversationId, prompt);
+        return new AgentSession(llmChatClient, agent);
+    }
+
+    private static String sessionKey(String modelKey, String conversationId) {
+        return modelKey + ":" + conversationId;
+    }
+
+    private static String normalizeConversationId(String conversationId) {
+        if (conversationId == null) {
+            return null;
+        }
+        String trimmed = conversationId.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private static Map<String, ChatModel> resolveChatModels(ApplicationContext context) {
@@ -72,6 +130,10 @@ public class ToolCallService {
             }
         });
         return Map.copyOf(models);
+    }
+
+    public Set<String> allModels() {
+        return chatModels.keySet();
     }
 
     /**

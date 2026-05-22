@@ -110,6 +110,12 @@ public class LLMChatClient {
         addMemory(new SystemMessage(memory), conversation);
     }
 
+    /** Whether this conversation key already has messages in memory (continuing session). */
+    public boolean hasConversation(String conversation) {
+        List<Message> messages = chatMemory.get(conversation);
+        return messages != null && !messages.isEmpty();
+    }
+
     /**
      * Replaces the entire conversation memory.
      * <p>

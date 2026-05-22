@@ -22,9 +22,18 @@ public class ToolCallAgent extends ReactAgent {
 
     private static final String NAME = "toolcall";
     private static final String DESCRIPTION = "an agent that can execute tool calls";
-    private static final String SYSTEM_PROMPT = "You are an agent that can execute tool calls";
-    private static final String NEXT_STEP_PROMPT =
-            "If you want to stop interaction, use `terminate` tool/function call.";
+    /** Stable role only; tool-specific workflow lives in {@link #NEXT_STEP_PROMPT} (injected each think). */
+    private static final String SYSTEM_PROMPT =
+            "You are a helpful assistant. Use the provided tools when they apply. "
+                    + "Match the user's language. Do not repeat yourself across turns.";
+    private static final String NEXT_STEP_PROMPT = """
+            Decide the single best action for this turn:
+            - If the user request is already fully answered via create_chat_completion in the conversation, \
+            call terminate(status="success") only. Do not output assistant text.
+            - Otherwise, put the complete answer in create_chat_completion(response=...) this turn. \
+            Do not put the answer only in assistant message text. Call terminate in a later turn, not now.
+            - Do not send a follow-up summary as assistant text after answering.
+            """;
 
     private static final List<Object> DEFAULT_TOOLS = List.of(new ChatLifecycleTool());
     private final List<Object> extraTools = new ArrayList<>();
@@ -97,33 +106,42 @@ public class ToolCallAgent extends ReactAgent {
         ToolExecutionResult result = toolCallingManager.executeToolCalls(currentChatPrompt, currentChatResponse);
         List<Message> fullHistory = result.conversationHistory();
         chatClient.replaceMemory(fullHistory, conversation);
-        return extractActResult(fullHistory);
+        return extractActResult(fullHistory, currentToolCalls);
     }
 
-    private String extractActResult(List<Message> history) {
+    /**
+     * Collects results for tools invoked in this {@code act()} only ({@code currentToolCalls} from the
+     * preceding {@code think()}), in call order. {@code history} is only used to look up matching
+     * {@link ToolResponseMessage.ToolResponse} entries by tool-call id.
+     */
+    private String extractActResult(List<Message> history, List<AssistantMessage.ToolCall> stepToolCalls) {
         StringBuilder output = new StringBuilder();
 
-        for (Message message : history) {
-            if (!(message instanceof ToolResponseMessage toolMessage)) {
+        for (AssistantMessage.ToolCall toolCall : stepToolCalls) {
+            ToolResponseMessage.ToolResponse response = findToolResponse(history, toolCall);
+            if (response == null) {
+                log.warn("No tool response for {} (id={})", toolCall.name(), toolCall.id());
                 continue;
             }
-            for (ToolResponseMessage.ToolResponse response : toolMessage.getResponses()) {
-                String toolName = response.name();
-                if (TERMINATE_TOOL_NAME.equals(toolName)) {
-                    transitState(AgentState.FINISHED);
-                }
-                Object resultData = response.responseData();
-                if (resultData != null) {
-                    String text = resultData.toString();
-                    if (!text.isBlank()) {
-                        if (!output.isEmpty()) {
-                            output.append("\n\n");
-                        }
-                        output.append(text);
-                    }
-                }
-                log.info("Tool {} result: {}", toolName, resultData);
+
+            String toolName = response.name();
+            if (TERMINATE_TOOL_NAME.equals(toolName)) {
+                transitState(AgentState.FINISHED);
             }
+
+            Object resultData = response.responseData();
+            log.info("Tool {} result: {}", toolName, resultData);
+            if (resultData == null) {
+                continue;
+            }
+            String text = resultData.toString();
+            if (text.isBlank()) {
+                continue;
+            }
+            if (!output.isEmpty()) {
+                output.append("\n\n");
+            }
+            output.append(text);
         }
 
         if (!output.isEmpty()) {
@@ -133,5 +151,42 @@ public class ToolCallAgent extends ReactAgent {
             return "Task completed.";
         }
         return lastThinkResult;
+    }
+
+    private static ToolResponseMessage.ToolResponse findToolResponse(
+            List<Message> history, AssistantMessage.ToolCall toolCall) {
+        if (history == null || history.isEmpty()) {
+            return null;
+        }
+        String callId = toolCall.id();
+        String callName = toolCall.name();
+
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Message message = history.get(i);
+            if (!(message instanceof ToolResponseMessage toolMessage)) {
+                continue;
+            }
+            for (ToolResponseMessage.ToolResponse response : toolMessage.getResponses()) {
+                if (callId != null && !callId.isBlank() && callId.equals(response.id())) {
+                    return response;
+                }
+            }
+        }
+
+        if (callName == null || callName.isBlank()) {
+            return null;
+        }
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Message message = history.get(i);
+            if (!(message instanceof ToolResponseMessage toolMessage)) {
+                continue;
+            }
+            for (ToolResponseMessage.ToolResponse response : toolMessage.getResponses()) {
+                if (callName.equals(response.name())) {
+                    return response;
+                }
+            }
+        }
+        return null;
     }
 }

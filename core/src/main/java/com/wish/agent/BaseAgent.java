@@ -86,8 +86,10 @@ public abstract class BaseAgent {
         List<String> results = new ArrayList<>();
 
         try {
-            // System prompt must precede user messages (SenseNova rejects user-before-system + tools)
-            chatClient.addSystemMemory(systemPrompt, conversation);
+            // System prompt only on first turn for this conversation (continuing sessions keep prior memory)
+            if (!chatClient.hasConversation(conversation)) {
+                chatClient.addSystemMemory(systemPrompt, conversation);
+            }
             if (request != null && !request.isBlank()) {
                 chatClient.addUserMemory(request, conversation);
             }

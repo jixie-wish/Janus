@@ -68,19 +68,30 @@ mvn -f shell/pom.xml spring-boot:run
 ### tool-call request
 
 ```text
-tool-call request --prompt "<用户任务>" [--model sensenova]
+tool-call request --prompt "<用户任务>" [--model sensenova] [--conversation-id <id>]
 ```
 
 | 参数 | 简写 | 必填 | 默认 | 说明 |
 |------|------|------|------|------|
 | `--prompt` | `-p` | 是 | — | 发给 agent 的内容 |
 | `--model` | `-m` | 否 | `sensenova` | CLI 模型别名（当前对应 Spring 配置的 ChatModel） |
+| `--conversation-id` | `-c` | 否 | — | 同一次 shell 进程内复用对话 memory；不传则每次请求独立 |
 
 示例：
 
 ```text
 shell:> tool-call request -p "你好"
 shell:> tool-call request --prompt "用一句话介绍 Janus" -m sensenova
+shell:> tool-call request -p "Tell me about China" -c demo
+shell:> tool-call request -p "我刚才问了什么" -c demo
+```
+
+带 `-c` 时输出首行会回显 `conversation-id: ...`，便于确认会话 id。memory 仅在**当前 JVM / shell 进程**内有效，退出 shell 后丢失。
+
+清除缓存：
+
+```text
+shell:> tool-call clear-session -c demo
 ```
 
 返回为多行文本，形如 `Step 1: ...`、`Step 2: ...`（每步 agent 的输出）。
