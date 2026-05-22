@@ -1,8 +1,8 @@
 # Agent 架构与流程
 
-> [English](AGENT-FLOW.en.md) · 符号：`S` system · `U` user · `A` assistant · `T` tool result
+> [English](AGENT-FLOW.en.md) · Shell 入口见 [shell/docs/SHELL.md](../../shell/docs/SHELL.md) · 符号：`S` `U` `A` `T`
 
-继承关系：`BaseAgent` ← `ReactAgent` ← `ToolCallAgent`（shell 里 `ToolCallService` 创建并 `run`）。
+继承关系：`BaseAgent` ← `ReactAgent` ← `ToolCallAgent`（由 [shell/docs/SHELL.md](../../shell/docs/SHELL.md) 里 `ToolCallService` 创建并 `run`）。
 
 ```mermaid
 flowchart BT
@@ -219,4 +219,4 @@ stateDiagram-v2
 
 ## 入口
 
-`ToolCallService.run` → `new ToolCallAgent(llmChatClient, maxSteps)` → `agent.run(conversationId, prompt)`。
+见 [shell/docs/SHELL.md](../../shell/docs/SHELL.md)：`ToolCallService.run` → `ToolCallAgent` → `agent.run`。

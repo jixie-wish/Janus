@@ -1,8 +1,8 @@
 # Agent Architecture and Flow
 
-> [中文](AGENT-FLOW.md) · `S` system · `U` user · `A` assistant · `T` tool result
+> [中文](AGENT-FLOW.md) · Shell module: [shell/docs/SHELL.en.md](../../shell/docs/SHELL.en.md) · `S` `U` `A` `T`
 
-Inheritance: `BaseAgent` ← `ReactAgent` ← `ToolCallAgent` (created and run from `ToolCallService` in shell).
+Inheritance: `BaseAgent` ← `ReactAgent` ← `ToolCallAgent` (created and run via [shell/docs/SHELL.en.md](../../shell/docs/SHELL.en.md) `ToolCallService`).
 
 ```mermaid
 flowchart BT
@@ -219,4 +219,4 @@ stateDiagram-v2
 
 ## Entry point
 
-`ToolCallService.run` → `new ToolCallAgent(llmChatClient, maxSteps)` → `agent.run(conversationId, prompt)`.
+See [shell/docs/SHELL.en.md](../../shell/docs/SHELL.en.md): `ToolCallService.run` → `ToolCallAgent` → `agent.run`.
