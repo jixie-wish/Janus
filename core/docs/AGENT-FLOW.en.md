@@ -1,6 +1,6 @@
 # Agent Architecture and Flow
 
-> [中文](AGENT-FLOW.md) · Shell module: [shell/docs/SHELL.en.md](../../shell/docs/SHELL.en.md) · `S` `U` `A` `T`
+> [中文](AGENT-FLOW.md) · Shell module: [shell/docs/SHELL.en.md](../../shell/docs/SHELL.en.md) · FAQ: [docs/FAQ.en.md](../../docs/FAQ.en.md) · `S` `U` `A` `T`
 
 Inheritance: `BaseAgent` ← `ReactAgent` ← `ToolCallAgent` (created and run via [shell/docs/SHELL.en.md](../../shell/docs/SHELL.en.md) `ToolCallService`).
 

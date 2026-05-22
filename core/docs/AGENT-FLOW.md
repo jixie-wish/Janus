@@ -1,6 +1,6 @@
 # Agent 架构与流程
 
-> [English](AGENT-FLOW.en.md) · Shell 入口见 [shell/docs/SHELL.md](../../shell/docs/SHELL.md) · 符号：`S` `U` `A` `T`
+> [English](AGENT-FLOW.en.md) · Shell 入口见 [shell/docs/SHELL.md](../../shell/docs/SHELL.md) · 常见问题见 [docs/FAQ.md](../../docs/FAQ.md) · 符号：`S` `U` `A` `T`
 
 继承关系：`BaseAgent` ← `ReactAgent` ← `ToolCallAgent`（由 [shell/docs/SHELL.md](../../shell/docs/SHELL.md) 里 `ToolCallService` 创建并 `run`）。
 

@@ -1,6 +1,6 @@
 # janus-shell 用法
 
-> [English](SHELL.en.md) · Agent 原理见 [core/docs/AGENT-FLOW.md](../../core/docs/AGENT-FLOW.md)
+> [English](SHELL.en.md) · Agent 原理见 [core/docs/AGENT-FLOW.md](../../core/docs/AGENT-FLOW.md) · 常见问题见 [docs/FAQ.md](../../docs/FAQ.md)
 
 `shell` 是 Janus 的命令行入口：启动后进入 `shell:>`，通过 `tool-call request` 调用 SenseNova 上的 ToolCall Agent。
 

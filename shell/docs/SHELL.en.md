@@ -1,6 +1,6 @@
 # janus-shell Usage
 
-> [中文](SHELL.md) · Agent internals: [core/docs/AGENT-FLOW.en.md](../../core/docs/AGENT-FLOW.en.md)
+> [中文](SHELL.md) · Agent internals: [core/docs/AGENT-FLOW.en.md](../../core/docs/AGENT-FLOW.en.md) · FAQ: [docs/FAQ.en.md](../../docs/FAQ.en.md)
 
 The `shell` module is Janus’s CLI entry point. After startup you get a `shell:>` prompt and run the ToolCall agent on SenseNova via `tool-call request`.
 

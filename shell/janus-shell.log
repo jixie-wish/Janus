@@ -10,3 +10,4 @@
 1779418333320:tool-call request -p "Tell me about China" -m sensenova -c demo
 1779418355411:tool-call request -p "What question did I ask you just now" -m sensenova -c demo
 1779418475193:tool-call request -p "What question did I ask you just now" -m sensenova
+1779418852631:tool-call request -p "Describe tools you can support" -m sensenova
