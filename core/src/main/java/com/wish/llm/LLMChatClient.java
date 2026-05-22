@@ -147,11 +147,16 @@ public class LLMChatClient {
             chatMemory.add(conversation, userMessage);
         }
 
-        ToolCallingChatOptions options = ToolCallingChatOptions.builder()
-                .toolCallbacks(ToolCallbacks.from(currentTools.toArray()))
-                .internalToolExecutionEnabled(false)
-                .build();
-        Prompt prompt = new Prompt(messages, options);
+        Prompt prompt;
+        if (currentTools.isEmpty()) {
+            prompt = new Prompt(messages);
+        } else {
+            ToolCallingChatOptions options = ToolCallingChatOptions.builder()
+                    .toolCallbacks(ToolCallbacks.from(currentTools.toArray()))
+                    .internalToolExecutionEnabled(false)
+                    .build();
+            prompt = new Prompt(messages, options);
+        }
         ChatResponse response = chatModel.call(prompt);
         return Pair.of(response, prompt);
     }

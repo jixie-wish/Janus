@@ -1,0 +1,4 @@
+1779412892180:tool-call request --prompt "你好"
+1779413166179:tool-call request --prompt "帮我查一下今天的天气"
+1779413985679:tool-call request --prompt "你好"
+1779414905854:git status

@@ -4,6 +4,7 @@ import com.wish.agent.ToolCallAgent;
 import com.wish.llm.LLMChatClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,6 +36,11 @@ public class ToolCallService {
         this.extraTools = resolveExtraTools(applicationContext);
         this.maxSteps = maxSteps;
         log.info("Registered chat models: {}", chatModels.keySet());
+        chatModels.forEach((alias, model) -> {
+            if (model instanceof OpenAiChatModel openAi) {
+                log.info("OpenAI chat model alias '{}' -> api model '{}'", alias, openAi.getOptions().getModel());
+            }
+        });
         if (!extraTools.isEmpty()) {
             log.info("Loaded {} extra tool(s) (e.g. MCP)", extraTools.size());
         }

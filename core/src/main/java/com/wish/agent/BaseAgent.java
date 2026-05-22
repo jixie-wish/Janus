@@ -86,10 +86,11 @@ public abstract class BaseAgent {
         List<String> results = new ArrayList<>();
 
         try {
+            // System prompt must precede user messages (SenseNova rejects user-before-system + tools)
+            chatClient.addSystemMemory(systemPrompt, conversation);
             if (request != null && !request.isBlank()) {
                 chatClient.addUserMemory(request, conversation);
             }
-            chatClient.addSystemMemory(systemPrompt, conversation);
 
             while (currentStep < maxSteps && agentState != AgentState.FINISHED) {
                 currentStep++;
