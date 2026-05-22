@@ -1,6 +1,9 @@
 # Local Spring config (API keys)
 **/application-local.properties
 
+# Accidental jar xf extract (not project source)
+/org/
+
 target/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
