@@ -2,6 +2,7 @@ package com.wish.flow;
 
 import com.wish.agent.BaseAgent;
 import com.wish.llm.LLMChatClient;
+import com.wish.tools.plan.Plan;
 import com.wish.tools.plan.PlanTool;
 import jdk.jfr.Frequency;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +37,16 @@ public class PlanningFlow extends BaseFlow {
             Remember use %s as the plan_id
             """;
 
+    private final String FINILIZE_PLAN_SYSTEM_PROMPT = """
+            You are a planning assistant. Your task is to summarize the completed plan.
+            """;
+
+    private final String FINILIZE_PLAN_USER_PROMPT_FORMAT = """
+            The plan has been completed. Here is the final plan status:
+            %s
+            Please provide a summary of what was accomplished and any final thoughts.
+            """;
+
     private final String activePlanId = "plan_" + System.currentTimeMillis();
     private final PlanTool planTool = new PlanTool();
     private final ToolCallingManager toolCallingManager;
@@ -66,6 +77,16 @@ public class PlanningFlow extends BaseFlow {
             throw new RuntimeException("No primary agent available");
         }
         createInitialPlan(conversation, input);
+        while (true) {
+            Plan plan = planTool.getPlanObj(activePlanId);
+            Pair<Integer, Map<String, String>> stepInfo = plan.getCurrentStepInfo();
+            if(stepInfo.getLeft() == -1) {
+                finalizePlan(conversation, plan);
+                break;
+            }
+
+
+        }
 
         return "";
     }
@@ -113,5 +134,15 @@ public class PlanningFlow extends BaseFlow {
             return false;
         }
 
+    }
+
+    private String finalizePlan(String conversation, Plan plan) {
+        SystemMessage systemMessage = new SystemMessage(FINILIZE_PLAN_SYSTEM_PROMPT);
+        UserMessage userMessage = new UserMessage(FINILIZE_PLAN_USER_PROMPT_FORMAT.formatted(plan.format()));
+        llmChatClient.addMemory(systemMessage, conversation);
+        llmChatClient.addMemory(userMessage, conversation);
+        Pair<ChatResponse, Prompt> response = llmChatClient.askWithTools(conversation, List.of(), List.of());
+        String result = response.getLeft().getResult().getOutput().getText();
+        return "Plan Completed: " + result;
     }
 }

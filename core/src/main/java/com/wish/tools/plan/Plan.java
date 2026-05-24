@@ -1,24 +1,26 @@
 package com.wish.tools.plan;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import org.apache.commons.lang3.tuple.Pair;
+
+import java.util.*;
 
 /** In-memory plan state aligned with OpenManus {@code app.tool.planning.PlanningTool}. */
 public class Plan {
 
     public enum StepStatus {
-        NOT_STARTED("not_started", "[ ]"),
-        IN_PROGRESS("in_progress", "[→]"),
-        COMPLETED("completed", "[✓]"),
-        BLOCKED("blocked", "[!]");
+        NOT_STARTED("not_started", "[ ]", true),
+        IN_PROGRESS("in_progress", "[→]", true),
+        COMPLETED("completed", "[✓]", false),
+        BLOCKED("blocked", "[!]", false);
 
         private final String id;
         private final String symbol;
+        private final boolean active;
 
-        StepStatus(String id, String symbol) {
+        StepStatus(String id, String symbol, boolean active) {
             this.id = id;
             this.symbol = symbol;
+            this.active = active;
         }
 
         public String id() {
@@ -27,6 +29,10 @@ public class Plan {
 
         public String symbol() {
             return symbol;
+        }
+
+        public boolean isActive() {
+            return active;
         }
 
         public static StepStatus fromId(String id) {
@@ -170,5 +176,19 @@ public class Plan {
                     .toList();
         }
         return steps.stream().map(String::trim).filter(s -> !s.isEmpty()).toList();
+    }
+
+    public Pair<Integer, Map<String, String>> getCurrentStepInfo() {
+        for (int i = 0; i < steps.size(); i++){
+            Map<String, String> stepInfo = new HashMap<>();
+            String step = steps.get(i);
+            StepStatus status = stepStatuses.get(i);
+            if(status.isActive()) {
+                stepInfo.put("text", step);
+                markStep(i, StepStatus.IN_PROGRESS, "");
+                return Pair.of(i, stepInfo);
+            }
+        }
+        return Pair.of(-1, new HashMap<>());
     }
 }

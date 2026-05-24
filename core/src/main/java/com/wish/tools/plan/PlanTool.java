@@ -1,10 +1,13 @@
 package com.wish.tools.plan;
 
+import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -133,6 +136,11 @@ public class PlanTool {
     private String getPlan(String planId) {
         String resolvedId = resolvePlanId(planId, true);
         return requirePlan(resolvedId).format();
+    }
+
+    public Plan getPlanObj(String planId) {
+        String resolvedId = resolvePlanId(planId, true);
+        return plans.get(planId);
     }
 
     private String setActivePlan(String planId) {
