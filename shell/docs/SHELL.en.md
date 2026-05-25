@@ -8,7 +8,48 @@ The `shell` module is Janus’s CLI entry point. After startup you get a `shell:
 
 ## Component relationships
 
-How **shell**, **LLM model**, **session cache**, **agent**, and **memory** fit together (`ToolCallService`, `LLMChatClient`, `ToolCallAgent`):
+### Containment
+
+Who **owns** whom (nesting = composition). **LLM Model** is **shared** at process level; each session’s agent **references** the same `ChatModel` through its own `LLMChatClient`, rather than owning a separate model instance.
+
+```mermaid
+graph TB
+    subgraph SHELL["Shell process (single JVM)"]
+        CLI["Spring Shell<br/>tool-call request / clear-session"]
+        subgraph SVC["ToolCallService"]
+            subgraph SHARED["Shared (process-level, not owned by one agent)"]
+                CM["ChatModel<br/>application.properties · CLI -m"]
+            end
+            subgraph CACHE["sessions cache · ConcurrentHashMap"]
+                subgraph SESS1["CachedAgentSession · sensenova:demo"]
+                    subgraph AG1["ToolCallAgent"]
+                        subgraph LC1["LLMChatClient"]
+                            MEM1["ChatMemory<br/>partitioned by conversation-id"]
+                        end
+                    end
+                end
+                SESS2["CachedAgentSession · sensenova:work …"]
+            end
+        end
+    end
+    CM -.->|reference| LC1
+```
+
+| Level | Component | Notes |
+|-------|-----------|-------|
+| Outermost | **Shell process** | One JVM per `spring-boot:run`; all state gone on exit. |
+| In-process | **ToolCallService** | Holds shared `ChatModel` map and `sessions` cache. |
+| Shared | **LLM model (`ChatModel`)** | Typically one bean per alias; **not** owned by a single agent. |
+| Per session | **sessions slot** | Key `model:conversation-id` (`-c`); value `CachedAgentSession`. |
+| In slot | **ToolCallAgent** | Runs think/act; **owns** `LLMChatClient` (`BaseAgent.chatClient`). |
+| In agent | **LLMChatClient** | API calls + memory; **owns** `ChatMemory`. |
+| In client | **Memory** | Multi-turn System / User / Assistant / Tool messages. |
+
+Without `-c`, the Agent → LLMChatClient → Memory stack is still created per request but **not** stored in `sessions`; `conversation-id` is only the memory partition key.
+
+### Request and cache behavior
+
+Call flow for one `tool-call request` (not containment):
 
 ```mermaid
 flowchart TB

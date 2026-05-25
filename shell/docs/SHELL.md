@@ -8,7 +8,50 @@
 
 ## 组件关系
 
-下图说明 **shell 进程**、**LLM 模型**、**会话缓存**、**Agent** 与 **Memory** 如何配合（实现见 `ToolCallService`、`LLMChatClient`、`ToolCallAgent`）。
+### 包含结构
+
+下图表示**谁装在谁里面**（嵌套 = 拥有/组成）。**LLM Model** 在进程级**共享**，各会话的 Agent 通过各自的 `LLMChatClient` **引用**同一份 `ChatModel`，而不是每个 Agent 各持有一份模型实例。
+
+```mermaid
+graph TB
+    subgraph SHELL["Shell 进程（单 JVM）"]
+        CLI["Spring Shell<br/>tool-call request / clear-session"]
+        subgraph SVC["ToolCallService"]
+            subgraph SHARED["共享（进程级，不属于某个 Agent）"]
+                CM["ChatModel<br/>application.properties · CLI -m"]
+            end
+            subgraph CACHE["sessions 缓存 · ConcurrentHashMap"]
+                subgraph SESS1["CachedAgentSession · sensenova:demo"]
+                    subgraph AG1["ToolCallAgent"]
+                        subgraph LC1["LLMChatClient"]
+                            MEM1["ChatMemory<br/>按 conversation-id 分区"]
+                        end
+                    end
+                end
+                SESS2["CachedAgentSession · sensenova:work …"]
+            end
+        end
+    end
+    CM -.->|引用| LC1
+```
+
+说明：
+
+| 层级 | 组件 | 说明 |
+|------|------|------|
+| 最外层 | **Shell 进程** | 一次 `spring-boot:run` 即一个 JVM；退出后其下对象全部销毁。 |
+| 进程内 | **ToolCallService** | 管理共享 `ChatModel` 与 `sessions` 缓存。 |
+| 共享 | **LLM Model（ChatModel）** | 全进程通常一份（按 `-m` 别名索引）；**不**属于某个 Agent。 |
+| 按会话 | **sessions 槽位** | 键 `model:conversation-id`（`-c`）；值为 `CachedAgentSession`。 |
+| 槽位内 | **ToolCallAgent** | 执行 think/act；**持有** `LLMChatClient`（`BaseAgent.chatClient`）。 |
+| Agent 内 | **LLMChatClient** | 封装调用与记忆；**持有** `ChatMemory`。 |
+| Client 内 | **Memory** | 多轮 System / User / Assistant / Tool 消息。 |
+
+无 `-c` 时仍会临时构造「Agent → LLMChatClient → Memory」这一整条，但**不写入** `sessions` 缓存；`conversation-id` 仅作为 `ChatMemory` 的分区键使用。
+
+### 请求与缓存行为
+
+下图说明一次 `tool-call request` 的**调用与复用路径**（非包含关系）。
 
 ```mermaid
 flowchart TB
