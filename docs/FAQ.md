@@ -161,7 +161,95 @@ tool-call request -p "What was my first question?" -m sensenova
 
 ---
 
-## 10. 已知改进方向（未全部落地）
+## 10. Maven：`Unresolved plugin: maven-install-plugin`
+
+### 现象
+
+IDE（Cursor / VS Code Java、IntelliJ）提示无法解析 `org.apache.maven.plugins:maven-install-plugin:3.0.1`，但命令行有时能构建。
+
+### 原因
+
+- 本机访问 **Maven Central**（`repo.maven.apache.org`）较慢或超时；项目已在 `.mvn/settings.xml` 与 `pom.xml` 中配置 **阿里云** 镜像。
+- **IDE 默认不读** `.mvn/maven.config`，未使用项目 `settings.xml` 时会直连 Central，插件解析失败。
+- `~/.m2/repository` 里若存在失败的 `*.lastUpdated`（尤其 `maven-install-plugin-*.lastUpdated`），会加剧 IDE 报错。
+
+`pom.xml` 里 `maven-install-plugin.version=3.0.1` 是为兼容旧 Maven 的显式版本，与 Central 上 artifact 一致，不是版本号写错。
+
+### 处理步骤
+
+1. **全局 Maven 设置**（推荐，一次即可）：
+
+   ```bash
+   mkdir -p ~/.m2
+   cp .mvn/settings.xml ~/.m2/settings.xml
+   ```
+
+2. **清理失败缓存**（可选）：
+
+   ```bash
+   rm -f ~/.m2/repository/org/apache/maven/plugins/maven-install-plugin/maven-install-plugin-*.lastUpdated
+   ```
+
+3. **Cursor / VS Code**：工作区已提供 `.vscode/settings.json`，将 `java.configuration.maven.userSettings` 指向 `.mvn/settings.xml`。执行 **Java: Clean Java Language Server Workspace** 或 **Maven: Update Project** 后重载窗口。
+
+4. **IntelliJ**：*Settings → Build → Build Tools → Maven → User settings file* 设为项目内 `.mvn/settings.xml`，再 *Reload All Maven Projects*。
+
+5. **验证**：
+
+   ```bash
+   mvn -s .mvn/settings.xml validate
+   mvn -s .mvn/settings.xml -pl core install -DskipTests
+   ```
+
+---
+
+## 11. Maven：找不到 `com.wish:Janus` / `com.wish:core`（去阿里云下载失败）
+
+### 现象
+
+单独构建 `shell` 时出现类似错误：
+
+```text
+Could not find artifact com.wish:Janus:pom:0.0.1-SNAPSHOT in aliyun-public
+Could not find artifact com.wish:core:jar:0.0.1-SNAPSHOT in aliyun-public
+```
+
+### 原因
+
+`Janus`、`core`、`shell` 是**本仓库内的多模块**，不会发布到阿里云。Maven 只有在解析 `shell` 对 `core` 的依赖、或读取 `core` 的 POM 时，才会去远程找这些坐标；若尚未在本地 `install`，就会报上述错误。
+
+常见触发方式：只在 `shell/` 目录执行 `mvn package`，或 IDE 只编译 `shell` 模块且未先安装 `core`。
+
+### 正确做法
+
+在**项目根目录**执行（推荐）：
+
+```bash
+cd /path/to/Janus
+mvn -s .mvn/settings.xml install -DskipTests
+```
+
+若只想打 `shell`，也要带上依赖模块：
+
+```bash
+mvn -s .mvn/settings.xml -pl shell -am install -DskipTests
+```
+
+修改 `core` 后只需重装 core（FAQ §9）：
+
+```bash
+mvn -s .mvn/settings.xml -pl core install -DskipTests
+```
+
+若曾因失败产生远程拉取标记，可删除后重装：
+
+```bash
+rm -rf ~/.m2/repository/com/wish/Janus/0.0.1-SNAPSHOT/*.lastUpdated
+```
+
+---
+
+## 12. 其它已知改进方向（未全部落地）
 
 - 缩短或改写 `NEXT_STEP_PROMPT`，标明 **非用户消息**，减少 Step 2～3 自指循环。
 - `terminate` 结果不展示在 Shell `Step N`（仅内部结束）。

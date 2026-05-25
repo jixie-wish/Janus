@@ -6,6 +6,88 @@
 
 ---
 
+## 组件关系
+
+下图说明 **shell 进程**、**LLM 模型**、**会话缓存**、**Agent** 与 **Memory** 如何配合（实现见 `ToolCallService`、`LLMChatClient`、`ToolCallAgent`）。
+
+```mermaid
+flowchart TB
+    subgraph shell_proc["Shell 进程（单 JVM，退出后全部丢失）"]
+        CLI["Spring Shell<br/>shell:> tool-call request"]
+        CMD["ToolCallCommand"]
+        SVC["ToolCallService"]
+
+        subgraph cache["sessions 缓存<br/>ConcurrentHashMap"]
+            SK["键: model + ':' + conversation-id<br/>例: sensenova:demo"]
+            SESS["值: CachedAgentSession<br/>· LLMChatClient<br/>· ToolCallAgent"]
+        end
+
+        subgraph ephemeral["不传 -c（一次性请求）"]
+            NEW["每次新建 Agent + Client"]
+            UUID["conversationKey = 随机 UUID<br/>不写入 sessions"]
+        end
+
+        subgraph persistent["传 -c demo（同进程续聊）"]
+            HIT{"缓存命中?"}
+            REUSE["复用 CachedAgentSession"]
+            CREATE["新建并 sessions.put"]
+        end
+
+        CLI --> CMD --> SVC
+        SVC --> ephemeral
+        SVC --> persistent
+        persistent --> HIT
+        HIT -->|是| REUSE
+        HIT -->|否| CREATE
+        CREATE --> cache
+        REUSE --> cache
+        ephemeral --> NEW
+
+        subgraph agent_run["单次 request 内"]
+            AG["ToolCallAgent.run(conversationKey, prompt)"]
+            MEM["ChatMemory（在 LLMChatClient 内）<br/>按 conversationKey 分区存消息<br/>System / User / Assistant / Tool"]
+            AG --> MEM
+        end
+
+        NEW --> agent_run
+        REUSE --> agent_run
+        CREATE --> agent_run
+    end
+
+    CFG["application.properties<br/>spring.ai.openai.chat.model"]
+    CM["ChatModel Bean<br/>CLI -m sensenova → 别名映射"]
+    API["SenseNova / OpenAI 兼容 API"]
+
+    CFG --> CM
+    CM --> SVC
+    MEM -->|askWithTools / call| CM
+    CM --> API
+
+    USER["用户 -p 本轮问题"] --> CLI
+    CID["用户 -c conversation-id<br/>（可选，逻辑会话名）"] --> SVC
+    CID -.->|有 -c 时| SK
+    CID -.->|同时作为| MEM
+```
+
+| 概念 | 含义 |
+|------|------|
+| **Shell** | Spring Boot + Spring Shell 的 CLI 进程；一个 `shell:>` 对应一个 JVM。 |
+| **LLM Model** | Spring 注入的 `ChatModel`（如 SenseNova）；CLI `-m` 是别名，须与 Bean 映射一致。 |
+| **conversation-id（`-c`）** | 用户指定的**逻辑会话名**；同进程、同 `-m` 下相同 id 复用同一 Agent 与 Memory。 |
+| **conversationKey** | 传入 `agent.run` 的字符串；有 `-c` 时等于 conversation-id，无 `-c` 时为随机 UUID（仅本轮有效）。 |
+| **Cache（sessions）** | `ToolCallService` 内 Map：`(model, conversation-id) → Agent + LLMChatClient`；`clear-session` 删除条目。 |
+| **Agent** | `ToolCallAgent`：多步 think/act，调工具 `create_chat_completion` / `terminate`。 |
+| **Memory** | `LLMChatClient` 内的 `ChatMemory`，按 **conversationKey** 保存多轮消息；续聊时下一轮仍用同一 key。 |
+
+要点：
+
+- **无 `-c`**：每次请求新建 Agent，Memory 用随机 key，**不进入 sessions**，进程内也不保留历史。
+- **有 `-c`**：命中缓存则 **Agent + Memory 延续**；首次请求创建并放入 sessions。
+- **换 `-m` 或换 conversation-id** 视为不同缓存槽，Memory 互不相通。
+- 以上均在 **当前 shell 进程** 内有效；`exit` 后 sessions 与 Memory 一并销毁（未落盘）。
+
+---
+
 ## 环境
 
 - **JDK 21**

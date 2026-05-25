@@ -48,6 +48,18 @@ Same two lifecycle tools and next-step-as-user pattern; Janus Shell isolates req
 
 See [FAQ.md §9](FAQ.md#9-推荐验证命令) (Chinese section with command examples).
 
-## 10. Possible follow-ups
+## 10. Maven: `Unresolved plugin: maven-install-plugin`
+
+- **Symptom**: IDE reports `maven-install-plugin:3.0.1` unresolved; CLI may still work.
+- **Cause**: Slow or blocked access to Maven Central; IDE often ignores `.mvn/maven.config` and does not use `.mvn/settings.xml` (Aliyun mirror). Stale `*.lastUpdated` under `~/.m2/repository` can make it worse.
+- **Fix**: `cp .mvn/settings.xml ~/.m2/settings.xml`, remove `maven-install-plugin-*.lastUpdated` if present, point IDE Maven user settings to `.mvn/settings.xml`, reload Maven / Java language server. Verify with `mvn -s .mvn/settings.xml validate`.
+
+See [FAQ.md §10](FAQ.md#10-mavenunresolved-plugin-maven-install-plugin) for full steps (Chinese).
+
+## 11. Maven: cannot resolve `com.wish:Janus` / `com.wish:core`
+
+Local multi-module artifacts are not on Aliyun. Build from the repo root (`mvn install -DskipTests`) or use `mvn -pl shell -am install` so parent and `core` are installed into `~/.m2` first. See [FAQ.md §11](FAQ.md#11-maven找不到-comwishjanus--comwishcore去阿里云下载失败).
+
+## 12. Possible follow-ups
 
 Shorter next-step prompt, hide `terminate` text in Shell output, skip redundant text-only steps, persistent sessions.

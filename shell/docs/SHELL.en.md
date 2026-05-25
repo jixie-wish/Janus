@@ -6,6 +6,88 @@ The `shell` module is Janus’s CLI entry point. After startup you get a `shell:
 
 ---
 
+## Component relationships
+
+How **shell**, **LLM model**, **session cache**, **agent**, and **memory** fit together (`ToolCallService`, `LLMChatClient`, `ToolCallAgent`):
+
+```mermaid
+flowchart TB
+    subgraph shell_proc["Shell process (single JVM; all state lost on exit)"]
+        CLI["Spring Shell<br/>shell:> tool-call request"]
+        CMD["ToolCallCommand"]
+        SVC["ToolCallService"]
+
+        subgraph cache["sessions cache<br/>ConcurrentHashMap"]
+            SK["key: model + ':' + conversation-id<br/>e.g. sensenova:demo"]
+            SESS["value: CachedAgentSession<br/>· LLMChatClient<br/>· ToolCallAgent"]
+        end
+
+        subgraph ephemeral["no -c (one-off request)"]
+            NEW["new Agent + Client each time"]
+            UUID["conversationKey = random UUID<br/>not stored in sessions"]
+        end
+
+        subgraph persistent["with -c demo (resume in same process)"]
+            HIT{"cache hit?"}
+            REUSE["reuse CachedAgentSession"]
+            CREATE["create and sessions.put"]
+        end
+
+        CLI --> CMD --> SVC
+        SVC --> ephemeral
+        SVC --> persistent
+        persistent --> HIT
+        HIT -->|yes| REUSE
+        HIT -->|no| CREATE
+        CREATE --> cache
+        REUSE --> cache
+        ephemeral --> NEW
+
+        subgraph agent_run["per request"]
+            AG["ToolCallAgent.run(conversationKey, prompt)"]
+            MEM["ChatMemory (inside LLMChatClient)<br/>partitioned by conversationKey<br/>System / User / Assistant / Tool"]
+            AG --> MEM
+        end
+
+        NEW --> agent_run
+        REUSE --> agent_run
+        CREATE --> agent_run
+    end
+
+    CFG["application.properties<br/>spring.ai.openai.chat.model"]
+    CM["ChatModel bean<br/>CLI -m sensenova → alias"]
+    API["SenseNova / OpenAI-compatible API"]
+
+    CFG --> CM
+    CM --> SVC
+    MEM -->|askWithTools / call| CM
+    CM --> API
+
+    USER["user -p prompt"] --> CLI
+    CID["user -c conversation-id<br/>(optional logical session)"] --> SVC
+    CID -.->|when -c set| SK
+    CID -.->|also used as| MEM
+```
+
+| Term | Meaning |
+|------|---------|
+| **Shell** | Spring Boot + Spring Shell CLI; one `shell:>` = one JVM. |
+| **LLM model** | Injected `ChatModel` (e.g. SenseNova); CLI `-m` is an alias mapped to a bean. |
+| **conversation-id (`-c`)** | User-chosen **logical session id**; same id + same `-m` reuses one agent and memory in-process. |
+| **conversationKey** | String passed to `agent.run`; equals conversation-id when `-c` is set, else a random UUID for that request only. |
+| **Cache (sessions)** | `ToolCallService` map: `(model, conversation-id) → Agent + LLMChatClient`; `clear-session` removes an entry. |
+| **Agent** | `ToolCallAgent`: multi-step think/act with `create_chat_completion` / `terminate` tools. |
+| **Memory** | `ChatMemory` inside `LLMChatClient`, keyed by **conversationKey**; retained across requests when `-c` hits the cache. |
+
+Notes:
+
+- **Without `-c`**: new agent per request, random memory key, **not** in `sessions`.
+- **With `-c`**: cached **agent + memory** on hit; first request creates and stores in `sessions`.
+- **Different `-m` or conversation-id** → separate cache slots and memory.
+- Everything is **in-process only**; no disk persistence after shell exit.
+
+---
+
 ## Requirements
 
 - **JDK 21**
