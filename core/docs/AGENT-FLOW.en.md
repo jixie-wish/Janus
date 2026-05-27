@@ -2,17 +2,37 @@
 
 > [中文](AGENT-FLOW.md) · Shell usage: [shell/docs/SHELL.en.md](../../shell/docs/SHELL.en.md) · FAQ: [docs/FAQ.en.md](../../docs/FAQ.en.md)
 
-Janus **core** provides agents and flows; **shell** is the CLI.
+Janus **core** ships agents and flows; **shell** is the CLI. Below: what an agent is, then structure and flow diagrams in execution order.
 
 ---
 
-## Layers
+## What is an agent?
+
+In Janus, an **agent** completes a user **request** in multiple steps: it talks to the LLM, optionally **calls tools** (Python, files, bash, charts, etc.), and stops when the task looks done or `maxSteps` is reached.
+
+Each iteration follows the same pattern:
+
+1. **Understand** the goal (system prompt + conversation history);
+2. **Decide** this step’s action—reply only, or call a tool;
+3. **Execute**, store results in memory, continue.
+
+This is **ReAct** (reason then act). All task agents share that loop; they differ in **tools** and **prompts**.
+
+A single call `agent.run(context, request)` returns lines like `Step 1:`, `Step 2:`—one per iteration. Integrators do not assemble model requests or parse tool calls themselves.
+
+For work that must be **split across specialized agents**, core also provides **Flow** (see PlanningFlow below).
+
+---
+
+## Where agents sit in the stack
+
+A typical path: **Shell command → Service → Agent → model and tools**. The agent handles reasoning and tool orchestration; the service picks the model and stores conversation history.
 
 ```mermaid
 flowchart TB
-    CLI["Shell<br/>janus · da · swe · tool-call"]
-    SVC["Service<br/>sessions / models / agents"]
-    AG["Agent<br/>run → step loop"]
+    CLI["Shell"]
+    SVC["Service"]
+    AG["Agent"]
     CTX["UserContext + ChatMemory"]
     LLM["LLMChatClient + tools"]
 
@@ -21,23 +41,19 @@ flowchart TB
     AG --> LLM
 ```
 
-| Layer | Role |
-|-------|------|
-| **Shell** | Parses `-p` / `-m` / `-c`, invokes service |
-| **Service** | Registers agents per model; manages conversation memory |
-| **Agent** | Multi-step `run`: each step `think` → optional `act` |
-| **UserContext** | Conversation id, step counter, ChatMemory access |
-| **LLMChatClient** | Stateless; builds prompt from context history |
+How the CLI calls `agent.run` is in [SHELL.en.md](../../shell/docs/SHELL.en.md).
 
 ---
 
-## Class hierarchy
+## Code structure
+
+Agents form an inheritance chain: upper layers control the run loop; lower layers handle tool calls.
 
 ```mermaid
 flowchart TB
-    BA[BaseAgent<br/>run loop · state machine]
-    RA[ReactAgent<br/>step = think → act]
-    TCA[ToolCallAgent<br/>Spring AI tools]
+    BA[BaseAgent]
+    RA[ReactAgent]
+    TCA[ToolCallAgent]
     JA[JanusAgent]
     DA[DataAnalysisAgent]
     SWE[SWEAgent]
@@ -50,92 +66,82 @@ flowchart TB
     BF --> PF
 ```
 
-| Class | Role |
-|-------|------|
-| **BaseAgent** | `run(context, request)`: system/user messages, `step` until `FINISHED` or `maxSteps` |
-| **ReactAgent** | `step` = `think` then optional `act` |
-| **ToolCallAgent** | `think` gets toolCalls; `act` runs tools and updates memory |
-| **PlanningFlow** | Plan first, then delegate each step to an executor agent |
+- **BaseAgent**: `run` loop, state, step limit.
+- **ReactAgent**: each step is `think` then optional `act`.
+- **ToolCallAgent**: Spring AI tool calling; Janus / DA / SWE swap tools and prompts.
+- **PlanningFlow**: schedules multiple agents from a plan—it does not replace them.
 
 ---
 
-## Agent types and tools
+## Agent variants
 
-| Agent | CLI group | Use case | Built-in tools |
-|-------|-----------|----------|----------------|
-| **ToolCallAgent** | `tool-call` | Minimal chat + tools | `create_chat_completion`, `terminate` |
-| **JanusAgent** | `janus` | General tasks | `plan`, `python_execute`, `str_replace_editor`, `ask_human`, `terminate` |
-| **DataAnalysisAgent** | `da` | Analysis / charts | `python_execute`, `visualization_preparation`, `data_visualization`, `terminate` |
+| Agent | CLI group | Best for | Main tools |
+|-------|-----------|----------|------------|
+| **ToolCallAgent** | `tool-call` | Minimal chat | `create_chat_completion`, `terminate` |
+| **JanusAgent** | `janus` | General work | `plan`, Python, file editor, `ask_human`, `terminate` |
+| **DataAnalysisAgent** | `da` | Tables, stats, charts | Python, chart prep, visualization, `terminate` |
 | **SWEAgent** | `swe` | Terminal coding | `bash`, `str_replace_editor`, `terminate` |
 
-Optional **MCP tools**. Runtime options such as `max-steps` are set by the integrator (Shell: [SHELL.en.md](../../shell/docs/SHELL.en.md)).
+Optional **MCP tools**. Limits like `max-steps` are configured per agent (Shell: [SHELL.en.md](../../shell/docs/SHELL.en.md)).
 
 ---
 
-## `run` lifecycle (BaseAgent)
+## What one `run` does
+
+After `agent.run(context, request)`, the agent writes the system prompt and user message on first use (**S**, **U₀**), then loops `step` until finished or out of steps.
 
 ```mermaid
 stateDiagram-v2
     [*] --> IDLE
-    IDLE --> RUNNING: run(context, request)
+    IDLE --> RUNNING: run
 
     state RUNNING {
-        [*] --> Init: write S, U₀(request)
+        [*] --> Init
         Init --> Loop: step()
-        Loop --> Loop: not finished
-        Loop --> Stuck: isStuck? → recovery prompt
-        Stuck --> Loop
+        Loop --> Loop: continue
     }
 
-    RUNNING --> FINISHED: e.g. terminate
-    RUNNING --> ERROR: exception
-    FINISHED --> IDLE: finally
-    ERROR --> IDLE: finally
-    RUNNING --> IDLE: maxSteps reached
+    RUNNING --> FINISHED
+    RUNNING --> ERROR
+    FINISHED --> IDLE
+    ERROR --> IDLE
+    RUNNING --> IDLE: maxSteps
 ```
+
+**`terminate`** usually ends the run cleanly; otherwise the loop may stop at `maxSteps`. Repeated assistant text triggers a recovery hint to reduce spinning.
 
 ---
 
-## ReAct step: `think` → `act`
+## Each step: think and act
+
+**ReactAgent** splits a step into **think** then **act**.
+
+- **think**: send history and tool definitions to the model; get text and optional tool calls (**Aₙ**).
+- **act**: run tools and write results (**Tₙ**); **`terminate`** ends the whole run. With no tools, step text may be echoed as output.
 
 ```mermaid
 flowchart LR
-    subgraph step["one step()"]
-        T[think]
-        D{act?}
-        A[act]
-        SKIP[echo think text only]
-
-        T --> D
-        D -->|toolCalls or echo| A
-        D -->|no| SKIP
-    end
+    T[think] --> D{tool calls?}
+    D -->|yes| A[act]
+    D -->|no| E[echo or skip]
 ```
-
-**ToolCallAgent** detail:
 
 ```mermaid
 sequenceDiagram
-    participant AG as ToolCallAgent
-    participant CTX as UserContext
+    participant AG as Agent
     participant LC as LLMChatClient
-    participant API as ChatModel
-    participant TM as ToolCallingManager
+    participant API as Model
+    participant TM as Tools
 
-    AG->>CTX: append Uₙ (nextStepPrompt)
-    AG->>LC: askWithTools(context)
-    LC->>API: history + tool defs
-    API-->>LC: Aₙ + toolCalls
-    AG->>CTX: addMemory(Aₙ)
-
-    alt no toolCalls
-        AG-->>AG: act echoes text or skips
-    else toolCalls
-        AG->>TM: executeToolCalls
-        AG->>CTX: replaceMemory with Tₙ
-        Note over AG: terminate → FINISHED
+    AG->>LC: history + tools
+    LC->>API: request
+    API-->>AG: reply + toolCalls
+    alt tools
+        AG->>TM: execute
     end
 ```
+
+A short **nextStepPrompt** (**Uₙ**) may be injected before each think; wording is per agent class.
 
 ---
 
@@ -143,51 +149,32 @@ sequenceDiagram
 
 | Symbol | Meaning |
 |--------|---------|
-| **S** | SystemMessage (once per conversation partition) |
-| **U₀** | User `request` for this `run` (second argument to `run`) |
-| **Uₙ** | nextStepPrompt before each think |
+| **S** | System prompt |
+| **U₀** | This run’s `request` |
+| **Uₙ** | Next-step hint before think |
 | **Aₙ** | Assistant reply |
-| **Tₙ** | Tool results |
+| **Tₙ** | Tool result |
 
-With tools per step: `… → Uₙ → Aₙ → Tₙ`.
-
----
-
-## Public API
-
-```text
-agent.run(userContext, request) → "Step 1: …\nStep 2: …"
-```
-
-Callers (Shell service, tests, or your app) provide the context, the request string, and handle the `Step N` lines.
-
-How CLI flags map to `run` is documented in [shell/docs/SHELL.en.md](../../shell/docs/SHELL.en.md).
+With tools: `… → Uₙ → Aₙ → Tₙ`.
 
 ---
 
-## PlanningFlow (multi-agent)
+## PlanningFlow
 
-Wire `PlanningFlow` with executor agents in application code (no Flow command in Shell today).
+Use **PlanningFlow** when you need a **plan first**, then different agents per step (wired in code; no Shell command yet).
+
+Build a **Plan** → for each pending step, pick an executor agent → `agent.run` for that step → mark done → finalize.
 
 ```mermaid
 flowchart TB
-    IN[input] --> PLAN[createInitialPlan<br/>LLM + PlanTool]
+    IN[task] --> PLAN[plan]
     PLAN --> LOOP{more steps?}
-    LOOP -->|yes| PICK[getExecutor]
-    PICK --> RUN[executor.run<br/>step prompt]
-    RUN --> MARK[mark_step completed]
-    MARK --> LOOP
-    LOOP -->|no| FIN[finalizePlan]
-    FIN --> OUT[result]
+    LOOP -->|yes| RUN[agent.run]
+    RUN --> LOOP
+    LOOP -->|no| FIN[summary]
 ```
 
-| Phase | What happens |
-|-------|----------------|
-| **Plan** | Planning memory; model creates steps via `PlanTool` (`[agent_name]` in step text) |
-| **Execute** | Current step → pick agent → `run` on executor sub-context |
-| **Finish** | No steps left → summary; early `FINISHED` may stop the loop |
-
-Unlike a single `agent.run`, the **plan** picks the next step and executor instead of free-form tool choice inside one agent.
+The plan drives **what** runs next and **which** agent runs it—not free-form tool picking inside one long `run`.
 
 ---
 
@@ -195,7 +182,7 @@ Unlike a single `agent.run`, the **plan** picks the next step and executor inste
 
 | Goal | Approach |
 |------|----------|
-| New tool | `@Tool` + `builtinTools` |
+| New tool | `@Tool` method + `builtinTools` |
 | New agent | Subclass `ToolCallAgent` |
 | New CLI | `*Service` + `*Command` |
 
