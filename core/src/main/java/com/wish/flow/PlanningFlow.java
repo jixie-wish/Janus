@@ -10,10 +10,7 @@ import com.wish.tools.plan.Plan;
 import com.wish.tools.plan.PlanTool;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
-import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -71,13 +68,11 @@ public class PlanningFlow extends BaseFlow {
 
     private final PlanTool planTool = new PlanTool();
     private final ToolCallingManager toolCallingManager;
-    private final ChatMemory planningChatMemory;
 
     public PlanningFlow(LLMChatClient llmChatClient, Map<String, BaseAgent> agents, String primaryAgentName) {
         super(llmChatClient, agents, primaryAgentName);
         llmChatClient.addTools(List.of(planTool));
         toolCallingManager = ToolCallingManager.builder().build();
-        planningChatMemory = MessageWindowChatMemory.builder().build();
     }
 
     public PlanningFlow(
@@ -88,21 +83,18 @@ public class PlanningFlow extends BaseFlow {
         super(llmChatClient, agents, primaryAgentName, executorKeys);
         llmChatClient.addTools(List.of(planTool));
         toolCallingManager = ToolCallingManager.builder().build();
-        planningChatMemory = MessageWindowChatMemory.builder().build();
     }
 
     public PlanningFlow(LLMChatClient llmChatClient, BaseAgent agent) {
         super(llmChatClient, agent);
         llmChatClient.addTools(List.of(planTool));
         toolCallingManager = ToolCallingManager.builder().build();
-        planningChatMemory = MessageWindowChatMemory.builder().build();
     }
 
     public PlanningFlow(LLMChatClient llmChatClient, List<BaseAgent> agents) {
         super(llmChatClient, agents);
         llmChatClient.addTools(List.of(planTool));
         toolCallingManager = ToolCallingManager.builder().build();
-        planningChatMemory = MessageWindowChatMemory.builder().build();
     }
 
     @Override
@@ -195,7 +187,7 @@ public class PlanningFlow extends BaseFlow {
         log.info("Creating initial plan with ID: {}", planId);
 
         String systemPrompt = buildPlanningSystemPrompt();
-        BaseUserContext planningContext = new BaseUserContext(planningMemoryKey(context, "create"), planningChatMemory);
+        BaseUserContext planningContext = context.getInitializeContext();
         planningContext.addMemory(new SystemMessage(systemPrompt));
         planningContext.addMemory(new UserMessage(INITIAL_REQUEST_PROMPT_FORMAT.formatted(request, planId)));
 
@@ -255,8 +247,7 @@ public class PlanningFlow extends BaseFlow {
         String planText = planTool.hasPlan(planId) ? planTool.getPlan(planId).format() : "Plan " + planId + " not found.";
 
         try {
-            BaseUserContext planningContext =
-                    new BaseUserContext(planningMemoryKey(context, "finalize"), planningChatMemory);
+            BaseUserContext planningContext = context.getFinalizeContext();
             planningContext.addMemory(new SystemMessage(FINALIZE_PLAN_SYSTEM_PROMPT));
             planningContext.addMemory(new UserMessage(FINALIZE_PLAN_USER_PROMPT_FORMAT.formatted(planText)));
             Pair<ChatResponse, Prompt> response = llmChatClient.askWithTools(planningContext, List.of(), List.of());
@@ -292,9 +283,7 @@ public class PlanningFlow extends BaseFlow {
         return executorContext;
     }
 
-    private static String planningMemoryKey(PlanningFlowUserContext context, String phase) {
-        return context.getConversation() + "_planning_" + phase;
-    }
+
 
     private static PlanningFlowUserContext requirePlanningFlowUserContext(BaseFlowUserContext baseFlowUserContext) {
         if (baseFlowUserContext instanceof PlanningFlowUserContext planningFlowUserContext) {

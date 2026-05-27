@@ -62,6 +62,7 @@ public class LLMChatClient {
             prompt = new Prompt(messages, options);
         }
         ChatResponse response = chatModel.call(prompt);
+        userContext.onResponse(response);
         return Pair.of(response, prompt);
     }
 }

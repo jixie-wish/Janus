@@ -5,6 +5,8 @@ import lombok.Setter;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.*;
 import org.springframework.ai.chat.messages.MessageType;
+import org.springframework.ai.chat.metadata.Usage;
+import org.springframework.ai.chat.model.ChatResponse;
 
 import java.util.List;
 
@@ -12,20 +14,16 @@ import java.util.List;
  * Per-conversation state for agent runs. Cached by shell services; not stored on the agent.
  */
 @Getter
-public class BaseUserContext {
-
-    private final String conversation;
-
-    private final ChatMemory chatMemory;
+public class BaseUserContext extends Context{
 
     private int currentStep;
 
     @Setter
     private String lastThinkResult = "";
 
+
     public BaseUserContext(String conversationId, ChatMemory chatMemory) {
-        this.conversation = conversationId;
-        this.chatMemory = chatMemory;
+        super(conversationId, chatMemory);
         this.currentStep = 0;
     }
 
@@ -97,4 +95,6 @@ public class BaseUserContext {
     public List<Message> getAllMessages() {
         return chatMemory.get(conversation);
     }
+
+
 }
