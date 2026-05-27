@@ -1,6 +1,6 @@
 package com.wish.flow;
 
-import com.wish.agent.BaseAgent;
+import com.wish.agent.base.BaseAgent;
 import com.wish.models.AgentState;
 import com.wish.models.context.BaseFlowUserContext;
 import com.wish.models.context.BaseUserContext;
@@ -20,9 +20,7 @@ import org.springframework.ai.model.tool.ToolExecutionResult;
 
 import java.util.*;
 
-/**
- * Planning and step execution flow aligned with OpenManus {@code app.flow.planning.PlanningFlow}.
- */
+/** Planning and step execution flow. */
 @Slf4j
 public class PlanningFlow extends BaseFlow {
 

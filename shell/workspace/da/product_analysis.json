@@ -1,0 +1,62 @@
+{
+  "total_amount": 425416.94,
+  "product_count": 8,
+  "average_amount": 53177.1175,
+  "ranking": [
+    {
+      "rank": 1,
+      "product": "笔记本电脑",
+      "amount": 142502.73,
+      "percentage": 33.49719218985497
+    },
+    {
+      "rank": 2,
+      "product": "智能手机",
+      "amount": 111534.35,
+      "percentage": 26.21765602469897
+    },
+    {
+      "rank": 3,
+      "product": "平板电脑",
+      "amount": 84136.56,
+      "percentage": 19.77743528501709
+    },
+    {
+      "rank": 4,
+      "product": "显示器",
+      "amount": 37573.76,
+      "percentage": 8.832219986350333
+    },
+    {
+      "rank": 5,
+      "product": "智能手表",
+      "amount": 29775.64,
+      "percentage": 6.999166511798989
+    },
+    {
+      "rank": 6,
+      "product": "鼠标",
+      "amount": 8060.44,
+      "percentage": 1.8947153350310872
+    },
+    {
+      "rank": 7,
+      "product": "耳机",
+      "amount": 7523.48,
+      "percentage": 1.7684956316031983
+    },
+    {
+      "rank": 8,
+      "product": "键盘",
+      "amount": 4309.98,
+      "percentage": 1.0131190356453599
+    }
+  ],
+  "insights": {
+    "top_product": "笔记本电脑",
+    "top_product_amount": 142502.73,
+    "top3_percentage": 79.49228349957103,
+    "lowest_product": "键盘",
+    "lowest_product_amount": 4309.98
+  }
+}

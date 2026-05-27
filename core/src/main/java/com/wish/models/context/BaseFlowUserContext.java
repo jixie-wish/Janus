@@ -1,6 +1,6 @@
 package com.wish.models.context;
 
-import com.wish.agent.BaseAgent;
+import com.wish.agent.base.BaseAgent;
 import lombok.Getter;
 import org.springframework.ai.chat.memory.ChatMemory;
 

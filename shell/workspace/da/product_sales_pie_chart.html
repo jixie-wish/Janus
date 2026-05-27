@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>产品销售金额分布饼图</title>
+    <style>
+        body { font-family: 'Microsoft YaHei', Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; text-align: center; }
+        .chart { text-align: center; margin: 30px 0; }
+        .pie { 
+            width: 300px; height: 300px; 
+            border-radius: 50%; 
+            margin: 0 auto;
+            background: conic-gradient(
+                #FF6B6B 0deg 120.5898918834779deg,
+                #4ECDC4 120.5898918834779deg 214.9734535723942deg,
+                #45B7D1 214.9734535723942deg 286.17222059845574deg,
+                #96CEB4 286.17222059845574deg 317.96821254931695deg,
+                #FFEAA7 317.96821254931695deg 343.1652119917933deg,
+                #DDA0DD 343.1652119917933deg 349.9861871979052deg,
+                #98D8C8 349.9861871979052deg 356.35277147167676deg,
+                #F7DC6F 356.35277147167676deg 360deg
+            );
+            box-shadow: 0 0 20px rgba(0,0,0,0.2);
+        }
+        .legend { margin-top: 30px; }
+        .legend-item { display: flex; align-items: center; margin: 10px 0; }
+        .color-box { width: 20px; height: 20px; margin-right: 10px; border-radius: 3px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background: #3498db; color: white; }
+        .highlight { background: #fff3cd; }
+        .total { font-weight: bold; background: #e8f4f8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 各产品销售金额分布饼图</h1>
+        
+        <div class="chart">
+            <div class="pie"></div>
+        </div>
+        
+        <div class="legend">
+            <h3>图例说明</h3>
+
+            <div class="legend-item">
+                <div class="color-box" style="background: #FF6B6B"></div>
+                <span>笔记本电脑: ¥142,502.73 (33.5%)</span>
+            </div>
+
+            <div class="legend-item">
+                <div class="color-box" style="background: #4ECDC4"></div>
+                <span>智能手机: ¥111,534.35 (26.2%)</span>
+            </div>
+
+            <div class="legend-item">
+                <div class="color-box" style="background: #45B7D1"></div>
+                <span>平板电脑: ¥84,136.56 (19.8%)</span>
+            </div>
+
+            <div class="legend-item">
+                <div class="color-box" style="background: #96CEB4"></div>
+                <span>显示器: ¥37,573.76 (8.8%)</span>
+            </div>
+
+            <div class="legend-item">
+                <div class="color-box" style="background: #FFEAA7"></div>
+                <span>智能手表: ¥29,775.64 (7.0%)</span>
+            </div>
+
+            <div class="legend-item">
+                <div class="color-box" style="background: #DDA0DD"></div>
+                <span>鼠标: ¥8,060.44 (1.9%)</span>
+            </div>
+
+            <div class="legend-item">
+                <div class="color-box" style="background: #98D8C8"></div>
+                <span>耳机: ¥7,523.48 (1.8%)</span>
+            </div>
+
+            <div class="legend-item">
+                <div class="color-box" style="background: #F7DC6F"></div>
+                <span>键盘: ¥4,309.98 (1.0%)</span>
+            </div>
+
+        </div>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>排名</th>
+                    <th>产品</th>
+                    <th>销售金额 (¥)</th>
+                    <th>占比</th>
+                </tr>
+            </thead>
+            <tbody>
+
+                <tr class=" highlight">
+                    <td>1</td>
+                    <td>笔记本电脑</td>
+                    <td>142,502.73</td>
+                    <td>33.5%</td>
+                </tr>
+
+                <tr class=" highlight">
+                    <td>2</td>
+                    <td>智能手机</td>
+                    <td>111,534.35</td>
+                    <td>26.2%</td>
+                </tr>
+
+                <tr class=" highlight">
+                    <td>3</td>
+                    <td>平板电脑</td>
+                    <td>84,136.56</td>
+                    <td>19.8%</td>
+                </tr>
+
+                <tr class="">
+                    <td>4</td>
+                    <td>显示器</td>
+                    <td>37,573.76</td>
+                    <td>8.8%</td>
+                </tr>
+
+                <tr class="">
+                    <td>5</td>
+                    <td>智能手表</td>
+                    <td>29,775.64</td>
+                    <td>7.0%</td>
+                </tr>
+
+                <tr class="">
+                    <td>6</td>
+                    <td>鼠标</td>
+                    <td>8,060.44</td>
+                    <td>1.9%</td>
+                </tr>
+
+                <tr class="">
+                    <td>7</td>
+                    <td>耳机</td>
+                    <td>7,523.48</td>
+                    <td>1.8%</td>
+                </tr>
+
+                <tr class="">
+                    <td>8</td>
+                    <td>键盘</td>
+                    <td>4,309.98</td>
+                    <td>1.0%</td>
+                </tr>
+
+                <tr class="total">
+                    <td>总计</td>
+                    <td>8个产品</td>
+                    <td>425,416.94</td>
+                    <td>100.0%</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 5px;">
+            <h3>🔍 关键洞察</h3>
+            <ul>
+                <li><strong>销售冠军:</strong> 笔记本电脑 (¥142,502.73, 占33.5%)</li>
+                <li><strong>前三产品合计:</strong> 79.5% (笔记本电脑 + 智能手机 + 平板电脑)</li>
+                <li><strong>最低销售产品:</strong> 键盘 (¥4,309.98, 占1.0%)</li>
+                <li><strong>销售集中度:</strong> 前3名产品占据近80%市场份额</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

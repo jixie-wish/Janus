@@ -1,5 +1,6 @@
 package com.wish.agent;
 
+import com.wish.agent.base.ToolCallAgent;
 import com.wish.llm.LLMChatClient;
 import com.wish.tools.AskHuman;
 import com.wish.tools.PythonExecuteTool;
@@ -10,10 +11,7 @@ import com.wish.tools.plan.PlanTool;
 import java.nio.file.Path;
 import java.util.List;
 
-/**
- * Janus general-purpose agent aligned with OpenManus {@code app.agent.manus.Manus}
- * (local tools + optional MCP; browser automation not ported).
- */
+/** Janus general-purpose agent (local tools + optional MCP). */
 public class JanusAgent extends ToolCallAgent {
 
     private static final String NAME = "Janus";

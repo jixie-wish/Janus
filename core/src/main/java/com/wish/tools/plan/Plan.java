@@ -6,7 +6,7 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** In-memory plan state aligned with OpenManus {@code app.tool.planning.PlanningTool}. */
+/** In-memory plan state for planning tool operations. */
 public class Plan {
 
     private static final Pattern STEP_TYPE_PATTERN = Pattern.compile("\\[([A-Za-z0-9_]+)\\]");

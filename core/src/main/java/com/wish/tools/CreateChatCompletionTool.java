@@ -3,7 +3,7 @@ package com.wish.tools;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
-/** OpenManus {@code app.tool.create_chat_completion.CreateChatCompletion}. */
+/** Tool for returning the final user-visible answer. */
 public class CreateChatCompletionTool {
 
     @Tool(

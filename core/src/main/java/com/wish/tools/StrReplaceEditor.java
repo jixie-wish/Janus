@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-/** OpenManus {@code app.tool.str_replace_editor.StrReplaceEditor} (local filesystem only). */
+/** Local filesystem editing tool (view/create/replace/insert/undo). */
 public class StrReplaceEditor {
 
     private static final int SNIPPET_LINES = 4;

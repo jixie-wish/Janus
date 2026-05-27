@@ -1,6 +1,6 @@
 package com.wish.flow;
 
-import com.wish.agent.BaseAgent;
+import com.wish.agent.base.BaseAgent;
 import com.wish.llm.LLMChatClient;
 import com.wish.models.context.BaseFlowUserContext;
 import lombok.Getter;
@@ -68,9 +68,7 @@ public abstract class BaseFlow {
         }
     }
 
-    /**
-     * Pick executor for a plan step (OpenManus {@code PlanningFlow.get_executor}).
-     */
+    /** Pick executor for a plan step. */
     protected BaseAgent getExecutor(String stepType) {
         if (stepType != null && !stepType.isBlank()) {
             if (agents.containsKey(stepType)) {

@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * In-memory planning tool (OpenManus {@code PlanningTool}).
+ * In-memory planning tool.
  * Steps are plain strings; optional {@code [agent_name]} prefix selects the executor in {@link com.wish.flow.PlanningFlow}.
  * Every command that targets a plan requires an explicit {@code plan_id}.
  */
