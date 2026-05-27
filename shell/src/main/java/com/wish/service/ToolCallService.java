@@ -1,6 +1,7 @@
 package com.wish.service;
 
 import com.wish.agent.ToolCallAgent;
+import com.wish.models.context.Context.TokenUsageCounter;
 import com.wish.models.context.ToolCallUserContext;
 import com.wish.llm.LLMChatClient;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
 
+import jakarta.annotation.PostConstruct;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -38,6 +40,10 @@ public class ToolCallService {
         this.mcpTools = resolveMcpTools(applicationContext);
         this.maxSteps = maxSteps;
         this.chatMemory = MessageWindowChatMemory.builder().build();
+    }
+
+    @PostConstruct
+    private void initializeAgents() {
         for (Map.Entry<String, ChatModel> entry : chatModels.entrySet()) {
             registerModel(entry.getKey(), entry.getValue());
         }
@@ -96,7 +102,16 @@ public class ToolCallService {
 
         ToolCallUserContext context = resolveContext(modelKey, conversationKey, ephemeral);
         try {
+            TokenUsageCounter usageBefore = context.getTokenUsage();
+            Map<String, TokenUsageCounter> detailsBefore = context.getTokenUsageDetails();
             String result = agent.run(context, prompt);
+            TokenUsageCounter usageAfter = context.getTokenUsage();
+            Map<String, TokenUsageCounter> detailsAfter = context.getTokenUsageDetails();
+            logTokenUsage(
+                    deltaUsage(usageAfter, usageBefore),
+                    usageAfter,
+                    deltaUsageDetails(detailsAfter, detailsBefore),
+                    detailsAfter);
             if (ephemeral) {
                 return result;
             }
@@ -140,6 +155,56 @@ public class ToolCallService {
 
     protected static String sessionKey(String modelKey, String conversationId) {
         return modelKey + ":" + conversationId;
+    }
+
+    private static TokenUsageCounter deltaUsage(TokenUsageCounter after, TokenUsageCounter before) {
+        return after.subtract(before);
+    }
+
+    protected void logTokenUsage(
+            TokenUsageCounter thisCall,
+            TokenUsageCounter cumulative,
+            Map<String, TokenUsageCounter> thisCallByTag,
+            Map<String, TokenUsageCounter> cumulativeByTag) {
+        log.info(
+                "Token this call (prompt/completion/total): {}/{}/{}",
+                thisCall.getPromptTokens(),
+                thisCall.getCompletionTokens(),
+                thisCall.getTotalTokens());
+        logTokenUsageByTag("Token this call", thisCallByTag);
+        log.info(
+                "Token cumulative (prompt/completion/total): {}/{}/{}",
+                cumulative.getPromptTokens(),
+                cumulative.getCompletionTokens(),
+                cumulative.getTotalTokens());
+        logTokenUsageByTag("Token cumulative", cumulativeByTag);
+    }
+
+    private static Map<String, TokenUsageCounter> deltaUsageDetails(
+            Map<String, TokenUsageCounter> after, Map<String, TokenUsageCounter> before) {
+        Set<String> tags = new LinkedHashSet<>();
+        tags.addAll(after.keySet());
+        tags.addAll(before.keySet());
+        Map<String, TokenUsageCounter> delta = new LinkedHashMap<>();
+        for (String tag : tags) {
+            TokenUsageCounter afterUsage = after.getOrDefault(tag, new TokenUsageCounter());
+            TokenUsageCounter beforeUsage = before.getOrDefault(tag, new TokenUsageCounter());
+            delta.put(tag, afterUsage.subtract(beforeUsage));
+        }
+        return delta;
+    }
+
+    private void logTokenUsageByTag(String label, Map<String, TokenUsageCounter> usageByTag) {
+        if (usageByTag.isEmpty()) {
+            return;
+        }
+        usageByTag.forEach((tag, usage) -> log.info(
+                "{} [{}] (prompt/completion/total): {}/{}/{}",
+                label,
+                tag,
+                usage.getPromptTokens(),
+                usage.getCompletionTokens(),
+                usage.getTotalTokens()));
     }
 
     protected static String normalizeConversationId(String conversationId) {

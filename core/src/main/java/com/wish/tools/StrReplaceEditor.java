@@ -51,30 +51,30 @@ public class StrReplaceEditor {
             String command,
             @ToolParam(description = "Absolute path to file or directory.", required = true) String path,
             @ToolParam(description = "Required for `create`: content of the file to be created.", required = false)
-            String fileText,
+            String file_text,
             @ToolParam(description = "Required for `str_replace`: string in `path` to replace.", required = false)
-            String oldStr,
+            String old_str,
             @ToolParam(
                     description = "For `str_replace`: replacement text. For `insert`: text to insert (required).",
                     required = false)
-            String newStr,
+            String new_str,
             @ToolParam(
                     description = "Required for `insert`: `new_str` is inserted AFTER this line (0-based line index).",
                     required = false)
-            Integer insertLine,
+            Integer insert_line,
             @ToolParam(
                     description = "Optional for `view` on a file: [startLine, endLine], 1-based; use -1 as end for EOF.",
                     required = false)
-            List<Integer> viewRange)
+            List<Integer> view_range)
             throws IOException {
         Path filePath = Path.of(path).toAbsolutePath().normalize();
         validatePath(command, filePath);
 
         return switch (command) {
-            case "view" -> view(filePath, viewRange);
-            case "create" -> create(filePath, fileText);
-            case "str_replace" -> strReplace(filePath, oldStr, newStr);
-            case "insert" -> insert(filePath, insertLine, newStr);
+            case "view" -> view(filePath, view_range);
+            case "create" -> create(filePath, file_text);
+            case "str_replace" -> strReplace(filePath, old_str, new_str);
+            case "insert" -> insert(filePath, insert_line, new_str);
             case "undo_edit" -> undoEdit(filePath);
             default -> throw new ToolExecutionException(
                     "Unrecognized command '%s'. Allowed: view, create, str_replace, insert, undo_edit"

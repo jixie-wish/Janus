@@ -2,7 +2,6 @@ package com.wish.models.context;
 
 import com.wish.agent.BaseAgent;
 import lombok.Getter;
-import org.apache.commons.lang3.tuple.Triple;
 import org.springframework.ai.chat.memory.ChatMemory;
 
 import java.util.HashMap;
@@ -37,16 +36,11 @@ public class BaseFlowUserContext extends Context{
     }
 
     @Override
-    public Triple<Long, Long, Long> getTokenUsage() {
-        long promptToken = 0L;
-        long responseToken = 0L;
-        long totalToken = 0L;
-        for (BaseUserContext context: flowContext.values()) {
-            Triple<Long, Long, Long> contextUsage = context.getTokenUsage();
-            promptToken += contextUsage.getLeft();
-            responseToken += contextUsage.getMiddle();
-            totalToken += contextUsage.getRight();
+    public TokenUsageCounter getTokenUsage() {
+        TokenUsageCounter usage = new TokenUsageCounter();
+        for (BaseUserContext context : flowContext.values()) {
+            usage.add(context.getTokenUsage());
         }
-        return Triple.of(promptToken, responseToken, totalToken);
+        return usage;
     }
 }

@@ -14,3 +14,11 @@
 1779697421998:tool-call request -p "Tell me about China" -c demo
 1779697486006:tool-call request -p "which country did I ask just now" -c demo
 1779697495371:tool-call request -p "which country did I ask just now"
+1779852720931:janus request --prompt 帮我创建一个文件，内容为hello world，文件名为first_file.txt
+1779852868496:janus request --prompt "我刚刚的问题是什么"
+1779852951994:janus request --prompt "帮我创建一个文件，内容为hello world，文件名为first_file.txt"
+1779853052260:janus request --prompt "帮我创建一个python脚本，脚本实现加法，比如传入3 5，脚本输出8"
+1779861822316:janus request --prompt "修改脚本/Users/jixie/sbox/Janus/shell/workspace/add.py，改为计算乘法"
+1779862144403:janus request --prompt "修改脚本/Users/jixie/sbox/Janus/shell/workspace/add.py，改为计算减法"
+1779862190774:janus request --prompt "修改脚本/Users/jixie/sbox/Janus/shell/workspace/add.py，改为计算乘法"
+1779863423255:janus request --prompt "修改脚本/Users/jixie/sbox/Janus/shell/workspace/add.py，改为计算加法"

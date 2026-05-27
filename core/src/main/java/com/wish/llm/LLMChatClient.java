@@ -1,8 +1,10 @@
 package com.wish.llm;
 
 import com.wish.models.context.BaseUserContext;
+import com.wish.models.context.Context;
 import lombok.Getter;
 import org.apache.commons.lang3.tuple.Pair;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
@@ -12,7 +14,9 @@ import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.support.ToolCallbacks;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /** Stateless LLM facade: conversation state lives in {@link BaseUserContext}. */
 public class LLMChatClient {
@@ -62,7 +66,24 @@ public class LLMChatClient {
             prompt = new Prompt(messages, options);
         }
         ChatResponse response = chatModel.call(prompt);
-        userContext.onResponse(response);
+        userContext.onResponse(response, resolveUsageTag(response));
         return Pair.of(response, prompt);
+    }
+
+    private static String resolveUsageTag(ChatResponse response) {
+        AssistantMessage assistantMessage = response.getResult() != null ? response.getResult().getOutput() : null;
+        if (assistantMessage == null || assistantMessage.getToolCalls() == null || assistantMessage.getToolCalls().isEmpty()) {
+            return Context.DEFAULT_USAGE_TAG;
+        }
+        Set<String> toolNames = new LinkedHashSet<>();
+        for (AssistantMessage.ToolCall toolCall : assistantMessage.getToolCalls()) {
+            if (toolCall.name() != null && !toolCall.name().isBlank()) {
+                toolNames.add(toolCall.name());
+            }
+        }
+        if (toolNames.isEmpty()) {
+            return Context.DEFAULT_USAGE_TAG;
+        }
+        return "tools:" + String.join(",", toolNames);
     }
 }
