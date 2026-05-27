@@ -37,8 +37,9 @@
         <spring-shell.version>4.0.2</spring-shell.version>
         <!-- Maven 3.6.2 compatible; Boot 4 defaults to newer plugins that need Maven >= 3.6.3 -->
         <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
-        <maven-surefire-plugin.version>2.22.2</maven-surefire-plugin.version>
-        <maven-failsafe-plugin.version>2.22.2</maven-failsafe-plugin.version>
+        <!-- 3.x required for JUnit Jupiter (Spring Boot 4); needs Maven >= 3.6.3 -->
+        <maven-surefire-plugin.version>3.2.5</maven-surefire-plugin.version>
+        <maven-failsafe-plugin.version>3.2.5</maven-failsafe-plugin.version>
         <maven-install-plugin.version>3.0.1</maven-install-plugin.version>
         <maven-jar-plugin.version>3.2.2</maven-jar-plugin.version>
         <maven-resources-plugin.version>3.2.0</maven-resources-plugin.version>

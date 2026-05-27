@@ -22,23 +22,25 @@ class PlanToolTest {
         String created =
                 tool.plan("create", "p1", "Trip", List.of("Book flight", "Book hotel"), null, null, null);
 
-        assertTrue(created.contains("Plan created successfully"));
+        assertTrue(created.contains("Plan created"));
         assertTrue(created.contains("Book flight"));
 
         String listed = tool.plan("list", null, null, null, null, null, null);
         assertTrue(listed.contains("p1"));
-        assertTrue(listed.contains("(active)"));
 
         String got = tool.plan("get", "p1", null, null, null, null, null);
         assertTrue(got.contains("[ ] Book flight"));
     }
 
     @Test
-    void markStep_usesActivePlan() {
+    void markStep_requiresPlanId() {
         tool.plan("create", "p1", "Task", List.of("Step A", "Step B"), null, null, null);
 
-        String marked = tool.plan("mark_step", null, null, null, 0, "completed", "done");
+        assertThrows(
+                PlanTool.PlanToolException.class,
+                () -> tool.plan("mark_step", null, null, null, 0, "completed", "done"));
 
+        String marked = tool.plan("mark_step", "p1", null, null, 0, "completed", "done");
         assertTrue(marked.contains("[✓] Step A"));
         assertTrue(marked.contains("Notes: done"));
     }
@@ -55,7 +57,7 @@ class PlanToolTest {
     }
 
     @Test
-    void delete_clearsActivePlan() {
+    void get_requiresPlanId() {
         tool.plan("create", "p1", "Task", List.of("A"), null, null, null);
         tool.plan("delete", "p1", null, null, null, null, null);
 

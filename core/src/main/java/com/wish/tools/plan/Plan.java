@@ -3,9 +3,13 @@ package com.wish.tools.plan;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /** In-memory plan state aligned with OpenManus {@code app.tool.planning.PlanningTool}. */
 public class Plan {
+
+    private static final Pattern STEP_TYPE_PATTERN = Pattern.compile("\\[([A-Za-z0-9_]+)\\]");
 
     public enum StepStatus {
         NOT_STARTED("not_started", "[ ]", true),
@@ -40,7 +44,7 @@ public class Plan {
                 return null;
             }
             for (StepStatus status : values()) {
-                if (status.id.equals(id)) {
+                if (status.id.equalsIgnoreCase(id)) {
                     return status;
                 }
             }
@@ -118,6 +122,18 @@ public class Plan {
         return stepStatuses.stream().filter(s -> s == StepStatus.COMPLETED).count();
     }
 
+    /** Extract executor hint from step text, e.g. {@code [SEARCH]} → {@code search}. */
+    public static Optional<String> parseStepType(String step) {
+        if (step == null || step.isBlank()) {
+            return Optional.empty();
+        }
+        Matcher matcher = STEP_TYPE_PATTERN.matcher(step);
+        if (matcher.find()) {
+            return Optional.of(matcher.group(1).toLowerCase(Locale.ROOT));
+        }
+        return Optional.empty();
+    }
+
     @Override
     public String toString() {
         return format();
@@ -169,8 +185,8 @@ public class Plan {
         if (steps == null || steps.isEmpty()) {
             return List.of();
         }
-        if (steps.size() == 1 && steps.getFirst().contains(",")) {
-            return Arrays.stream(steps.getFirst().split(","))
+        if (steps.size() == 1 && steps.get(0).contains(",")) {
+            return Arrays.stream(steps.get(0).split(","))
                     .map(String::trim)
                     .filter(s -> !s.isEmpty())
                     .toList();
@@ -178,17 +194,23 @@ public class Plan {
         return steps.stream().map(String::trim).filter(s -> !s.isEmpty()).toList();
     }
 
+    /**
+     * First active step (not_started / in_progress), marked in_progress.
+     * Returns {@code (-1, empty)} when the plan is done.
+     */
     public Pair<Integer, Map<String, String>> getCurrentStepInfo() {
-        for (int i = 0; i < steps.size(); i++){
-            Map<String, String> stepInfo = new HashMap<>();
-            String step = steps.get(i);
-            StepStatus status = stepStatuses.get(i);
-            if(status.isActive()) {
-                stepInfo.put("text", step);
-                markStep(i, StepStatus.IN_PROGRESS, "");
-                return Pair.of(i, stepInfo);
+        for (int i = 0; i < steps.size(); i++) {
+            StepStatus status = i < stepStatuses.size() ? stepStatuses.get(i) : StepStatus.NOT_STARTED;
+            if (!status.isActive()) {
+                continue;
             }
+            Map<String, String> stepInfo = new HashMap<>();
+            String stepText = steps.get(i);
+            stepInfo.put("text", stepText);
+            parseStepType(stepText).ifPresent(type -> stepInfo.put("type", type));
+            markStep(i, StepStatus.IN_PROGRESS, null);
+            return Pair.of(i, stepInfo);
         }
-        return Pair.of(-1, new HashMap<>());
+        return Pair.of(-1, Map.of());
     }
 }

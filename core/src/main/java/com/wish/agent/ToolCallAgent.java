@@ -1,6 +1,9 @@
 package com.wish.agent;
 
 import com.wish.llm.LLMChatClient;
+import com.wish.models.context.BaseUserContext;
+import com.wish.models.context.ToolCallUserContext;
+import org.springframework.ai.chat.memory.ChatMemory;
 import com.wish.models.AgentState;
 import com.wish.tools.CreateChatCompletionTool;
 import com.wish.tools.TerminateTool;
@@ -14,7 +17,6 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -23,7 +25,6 @@ public class ToolCallAgent extends ReactAgent {
 
     private static final String NAME = "toolcall";
     private static final String DESCRIPTION = "an agent that can execute tool calls";
-    /** Stable role only; tool-specific workflow lives in {@link #NEXT_STEP_PROMPT} (injected each think). */
     private static final String SYSTEM_PROMPT =
             "You are a helpful assistant. Use the provided tools when they apply. "
                     + "Match the user's language. Do not repeat yourself across turns.";
@@ -39,13 +40,8 @@ public class ToolCallAgent extends ReactAgent {
     private static final List<Object> DEFAULT_BUILTIN_TOOLS =
             List.of(new CreateChatCompletionTool(), new TerminateTool());
 
-    private final List<Object> mcpTools = new ArrayList<>();
-
+    private final List<Object> mcpTools = new java.util.ArrayList<>();
     private final ToolCallingManager toolCallingManager;
-
-    private ChatResponse currentChatResponse;
-    private Prompt currentChatPrompt;
-    private List<AssistantMessage.ToolCall> currentToolCalls = List.of();
 
     public ToolCallAgent(LLMChatClient llmChatClient, int maxSteps) {
         this(llmChatClient, maxSteps, List.of());
@@ -75,61 +71,80 @@ public class ToolCallAgent extends ReactAgent {
         toolCallingManager = ToolCallingManager.builder().build();
     }
 
-    @Override
-    public boolean think(String conversation) {
-        // OpenManus: every think() prepends next_step_prompt as a user message before ask_tool
+    public boolean think(ToolCallUserContext context) {
         List<String> followUp = (nextStepPrompt != null && !nextStepPrompt.isBlank())
                 ? List.of(nextStepPrompt)
                 : Collections.emptyList();
 
-        Pair<ChatResponse, Prompt> response = chatClient.askWithTools(conversation, followUp, Collections.emptyList());
+        Pair<ChatResponse, Prompt> response = chatClient.askWithTools(context, followUp, Collections.emptyList());
         AssistantMessage assistantMessage = response.getKey().getResult().getOutput();
         String content = assistantMessage.getText();
-        currentToolCalls = assistantMessage.getToolCalls() != null
+        List<AssistantMessage.ToolCall> toolCalls = assistantMessage.getToolCalls() != null
                 ? assistantMessage.getToolCalls()
                 : List.of();
 
-        currentChatResponse = response.getKey();
-        currentChatPrompt = response.getValue();
-        lastThinkResult = content != null ? content : "";
+        context.setCurrentChatResponse(response.getLeft());
+        context.setCurrentChatPrompt(response.getRight());
+        context.setCurrentToolCalls(toolCalls);
+        context.setLastThinkResult(content != null ? content : "");
 
-        log.info("{}'s thoughts: {}", name, lastThinkResult);
-        log.info("{} selected {} tools to use", name, currentToolCalls.size());
-        for (AssistantMessage.ToolCall toolCall : currentToolCalls) {
+        log.info("{}'s thoughts: {}", name, context.getLastThinkResult());
+        log.info("{} selected {} tools to use", name, toolCalls.size());
+        for (AssistantMessage.ToolCall toolCall : toolCalls) {
             log.info("Tool prepared: {} args={}", toolCall.name(), toolCall.arguments());
         }
 
-        // OpenManus: always add assistant message to memory in think()
-        chatClient.addMemory(assistantMessage, conversation);
+        context.addMemory(assistantMessage);
 
-        // tool_choice=AUTO: act when there are tool calls, or when there is text-only content
-        if (currentToolCalls.isEmpty()) {
-            return !lastThinkResult.isBlank();
+        if (toolCalls.isEmpty()) {
+            return !context.getLastThinkResult().isBlank();
         }
         return true;
     }
 
-    @Override
-    public String act(String conversation) {
-        if (currentToolCalls.isEmpty()) {
-            // OpenManus act(): return last assistant content when no tool calls
-            return lastThinkResult.isBlank()
+    public String act(ToolCallUserContext context) {
+        List<AssistantMessage.ToolCall> toolCalls = context.getCurrentToolCalls();
+        if (toolCalls.isEmpty()) {
+            return context.getLastThinkResult().isBlank()
                     ? "No content or commands to execute"
-                    : lastThinkResult;
+                    : context.getLastThinkResult();
         }
 
-        ToolExecutionResult result = toolCallingManager.executeToolCalls(currentChatPrompt, currentChatResponse);
+        ToolExecutionResult result =
+                toolCallingManager.executeToolCalls(context.getCurrentChatPrompt(), context.getCurrentChatResponse());
         List<Message> fullHistory = result.conversationHistory();
-        chatClient.replaceMemory(fullHistory, conversation);
-        return extractActResult(fullHistory, currentToolCalls);
+        context.replaceMemory(fullHistory);
+        String output = extractActResult(context, fullHistory, toolCalls);
+        context.clearStepState();
+        return output;
     }
 
-    /**
-     * Collects results for tools invoked in this {@code act()} only ({@code currentToolCalls} from the
-     * preceding {@code think()}), in call order. {@code history} is only used to look up matching
-     * {@link ToolResponseMessage.ToolResponse} entries by tool-call id.
-     */
-    private String extractActResult(List<Message> history, List<AssistantMessage.ToolCall> stepToolCalls) {
+    @Override
+    public BaseUserContext createUserContext(String conversationId, ChatMemory chatMemory) {
+        return new ToolCallUserContext(conversationId, chatMemory);
+    }
+
+    @Override
+    public boolean think(BaseUserContext userContext) {
+        return think(asToolCallContext(userContext));
+    }
+
+    @Override
+    public String act(BaseUserContext userContext) {
+        return act(asToolCallContext(userContext));
+    }
+
+    private ToolCallUserContext asToolCallContext(BaseUserContext userContext) {
+        if (userContext instanceof ToolCallUserContext toolCallContext) {
+            return toolCallContext;
+        }
+        throw new IllegalArgumentException(
+                "Agent %s requires ToolCallUserContext but got %s"
+                        .formatted(name, userContext.getClass().getName()));
+    }
+
+    private String extractActResult(
+            ToolCallUserContext context, List<Message> history, List<AssistantMessage.ToolCall> stepToolCalls) {
         StringBuilder output = new StringBuilder();
 
         for (AssistantMessage.ToolCall toolCall : stepToolCalls) {
@@ -165,7 +180,7 @@ public class ToolCallAgent extends ReactAgent {
         if (agentState == AgentState.FINISHED) {
             return "Task completed.";
         }
-        return lastThinkResult;
+        return context.getLastThinkResult();
     }
 
     private static ToolResponseMessage.ToolResponse findToolResponse(

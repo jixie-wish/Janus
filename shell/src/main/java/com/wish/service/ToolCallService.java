@@ -1,10 +1,11 @@
 package com.wish.service;
 
-import com.wish.agentsession.CachedAgentSession;
-import com.wish.agentsession.ToolCallAgentSession;
 import com.wish.agent.ToolCallAgent;
+import com.wish.models.context.ToolCallUserContext;
 import com.wish.llm.LLMChatClient;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.tool.ToolCallback;
@@ -25,7 +26,10 @@ public class ToolCallService {
     protected final Map<String, ChatModel> chatModels;
     protected final List<Object> mcpTools;
     protected final int maxSteps;
-    private final Map<String, CachedAgentSession> sessions = new ConcurrentHashMap<>();
+    protected final ChatMemory chatMemory;
+    protected final Map<String, LLMChatClient> chatClients = new ConcurrentHashMap<>();
+    protected final Map<String, ToolCallAgent> agents = new ConcurrentHashMap<>();
+    private final Map<String, ToolCallUserContext> sessions = new ConcurrentHashMap<>();
 
     public ToolCallService(
             ApplicationContext applicationContext,
@@ -33,7 +37,26 @@ public class ToolCallService {
         this.chatModels = resolveChatModels(applicationContext);
         this.mcpTools = resolveMcpTools(applicationContext);
         this.maxSteps = maxSteps;
+        this.chatMemory = MessageWindowChatMemory.builder().build();
+        for (Map.Entry<String, ChatModel> entry : chatModels.entrySet()) {
+            registerModel(entry.getKey(), entry.getValue());
+        }
         logStartup();
+    }
+
+    protected void registerModel(String modelKey, ChatModel chatModel) {
+        LLMChatClient client = createChatClient(chatModel);
+        ToolCallAgent agent = createAgent(client);
+        chatClients.put(modelKey, client);
+        agents.put(modelKey, agent);
+    }
+
+    protected LLMChatClient createChatClient(ChatModel chatModel) {
+        return new LLMChatClient(chatModel, Collections.emptyList());
+    }
+
+    protected ToolCallAgent createAgent(LLMChatClient chatClient) {
+        return new ToolCallAgent(chatClient, maxSteps, mcpTools);
     }
 
     protected void logStartup() {
@@ -53,13 +76,13 @@ public class ToolCallService {
     }
 
     /**
-     * @param conversationId optional; when set, reuses in-process memory for the same id and model.
+     * @param conversationId optional; when set, reuses in-process {@link ToolCallUserContext} for the same id and model.
      *                       When null/blank, uses a one-off id (not cached).
      */
     public String run(String prompt, String model, String conversationId) {
         String modelKey = normalizeModelAlias(model);
-        ChatModel chatModel = chatModels.get(modelKey);
-        if (chatModel == null) {
+        ToolCallAgent agent = agents.get(modelKey);
+        if (agent == null) {
             String available = chatModels.isEmpty()
                     ? "(none — check API keys and spring-ai model starters)"
                     : String.join(", ", chatModels.keySet());
@@ -71,28 +94,32 @@ public class ToolCallService {
         boolean ephemeral = normalizedConversationId == null;
         String conversationKey = ephemeral ? UUID.randomUUID().toString() : normalizedConversationId;
 
-        CachedAgentSession session;
-        if (ephemeral) {
-            session = createSession(chatModel);
-            log.debug("Ephemeral conversation {}", conversationKey);
-        } else {
-            String sessionKey = sessionKey(modelKey, conversationKey);
-            CachedAgentSession existing = sessions.get(sessionKey);
-            if (existing != null) {
-                session = existing;
-                log.info("Reusing conversation session '{}' (model={})", conversationKey, modelKey);
-            } else {
-                session = createSession(chatModel);
-                sessions.put(sessionKey, session);
-                log.info("New conversation session '{}' (model={})", conversationKey, modelKey);
+        ToolCallUserContext context = resolveContext(modelKey, conversationKey, ephemeral);
+        try {
+            String result = agent.run(context, prompt);
+            if (ephemeral) {
+                return result;
+            }
+            return "conversation-id: %s%n%s".formatted(conversationKey, result);
+        } finally {
+            if (ephemeral) {
+                chatMemory.clear(conversationKey);
             }
         }
+    }
 
-        String result = session.agent().run(conversationKey, prompt);
+    protected ToolCallUserContext resolveContext(String modelKey, String conversationKey, boolean ephemeral) {
         if (ephemeral) {
-            return result;
+            log.debug("Ephemeral conversation {}", conversationKey);
+            return new ToolCallUserContext(conversationKey, chatMemory);
         }
-        return "conversation-id: %s%n%s".formatted(conversationKey, result);
+        String sessionKey = sessionKey(modelKey, conversationKey);
+        return sessions.computeIfAbsent(
+                sessionKey,
+                key -> {
+                    log.info("New conversation context '{}' (model={})", conversationKey, modelKey);
+                    return new ToolCallUserContext(conversationKey, chatMemory);
+                });
     }
 
     public void clearSession(String conversationId, String model) {
@@ -101,18 +128,14 @@ public class ToolCallService {
         if (normalized == null) {
             throw new IllegalArgumentException("conversation-id is required");
         }
-        CachedAgentSession removed = sessions.remove(sessionKey(modelKey, normalized));
+        String key = sessionKey(modelKey, normalized);
+        ToolCallUserContext removed = sessions.remove(key);
+        chatMemory.clear(normalized);
         if (removed == null) {
             log.info("No session to clear for conversation '{}' (model={})", normalized, modelKey);
         } else {
-            log.info("Cleared conversation session '{}' (model={})", normalized, modelKey);
+            log.info("Cleared conversation context '{}' (model={})", normalized, modelKey);
         }
-    }
-
-    protected CachedAgentSession createSession(ChatModel chatModel) {
-        LLMChatClient llmChatClient = new LLMChatClient(chatModel, Collections.emptyList());
-        ToolCallAgent agent = new ToolCallAgent(llmChatClient, maxSteps, mcpTools);
-        return new ToolCallAgentSession(llmChatClient, agent);
     }
 
     protected static String sessionKey(String modelKey, String conversationId) {

@@ -1,5 +1,6 @@
 package com.wish.agent;
 
+import com.wish.models.context.BaseUserContext;
 import com.wish.llm.LLMChatClient;
 
 public abstract class ReactAgent extends BaseAgent {
@@ -15,15 +16,15 @@ public abstract class ReactAgent extends BaseAgent {
     }
 
     @Override
-    public String step(String conversation) {
-        boolean shouldAct = think(conversation);
+    public String step(BaseUserContext userContext) {
+        boolean shouldAct = think(userContext);
         if (!shouldAct) {
             return "Thinking complete - no action needed";
         }
-        return act(conversation);
+        return act(userContext);
     }
 
-    public abstract boolean think(String conversation);
+    public abstract boolean think(BaseUserContext userContext);
 
-    public abstract String act(String conversation);
+    public abstract String act(BaseUserContext userContext);
 }

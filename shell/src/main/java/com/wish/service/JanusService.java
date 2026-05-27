@@ -1,8 +1,7 @@
 package com.wish.service;
 
-import com.wish.agentsession.CachedAgentSession;
-import com.wish.agentsession.JanusAgentSession;
 import com.wish.agent.JanusAgent;
+import com.wish.agent.ToolCallAgent;
 import com.wish.llm.LLMChatClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatModel;
@@ -12,7 +11,6 @@ import org.springframework.stereotype.Service;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collections;
 
 @Slf4j
 @Service
@@ -35,10 +33,8 @@ public class JanusService extends ToolCallService {
     }
 
     @Override
-    protected CachedAgentSession createSession(ChatModel chatModel) {
-        LLMChatClient llmChatClient = new LLMChatClient(chatModel, Collections.emptyList());
-        JanusAgent agent = new JanusAgent(llmChatClient, maxSteps, workspaceRoot, mcpTools);
-        return new JanusAgentSession(llmChatClient, agent);
+    protected ToolCallAgent createAgent(LLMChatClient chatClient) {
+        return new JanusAgent(chatClient, maxSteps, workspaceRoot, mcpTools);
     }
 
     private static Path resolveWorkspaceRoot(String configured) {
