@@ -16,4 +16,14 @@ final class WorkspaceSupport {
         }
         return root;
     }
+
+    static Path resolveDirectory(String configured, String description) {
+        Path root = Path.of(configured).toAbsolutePath().normalize();
+        try {
+            Files.createDirectories(root);
+        } catch (Exception e) {
+            throw new IllegalStateException("Cannot create " + description + " directory: " + root, e);
+        }
+        return root;
+    }
 }

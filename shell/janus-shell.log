@@ -28,3 +28,4 @@
 1779937423475:janus request -p "我刚刚问的是哪家公司" -c 123
 1779937817082:janus request -p "帮我查一下阿里巴巴的成立过程" -c 123
 1779937843322:janus request -p "我刚刚问的是哪家公司" -c 123
+1779956181351:swe request -p "帮我review一下/Users/jixie/sbox/Janus/core/src/main/java/com/wish/llm/LLMChatClient.java的代码是否符合spring最佳实践"

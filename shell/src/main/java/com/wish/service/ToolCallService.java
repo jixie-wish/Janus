@@ -7,6 +7,9 @@ import com.wish.llm.LLMChatClient;
 import com.wish.support.AgentRunSupport;
 import com.wish.tools.BashTool;
 import lombok.extern.slf4j.Slf4j;
+import org.springaicommunity.agent.tools.FileSystemTools;
+import org.springaicommunity.agent.tools.ShellTools;
+import org.springaicommunity.agent.tools.SkillsTool;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
@@ -18,8 +21,11 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -29,6 +35,7 @@ public class ToolCallService {
 
     protected final Map<String, ChatModel> chatModels;
     protected final List<Object> mcpTools;
+    protected final List<Object> skillTools;
     protected final int maxSteps;
     protected final ChatMemory chatMemory;
     protected final Map<String, LLMChatClient> chatClients = new ConcurrentHashMap<>();
@@ -37,11 +44,36 @@ public class ToolCallService {
 
     public ToolCallService(
             ApplicationContext applicationContext,
-            @Value("${janus.agent.tool-call.max-steps:10}") int maxSteps) {
+            @Value("${janus.agent.tool-call.max-steps:10}") int maxSteps,
+            @Value("${janus.agent.default.skills.dir:.agent/default/skills}") String defaultSkillsDir,
+            @Value("${janus.agent.tool-call.skills.dir:.agent/tool-call/skills}") String agentSkillsDir) {
         this.chatModels = resolveChatModels(applicationContext);
         this.mcpTools = resolveMcpTools(applicationContext);
         this.maxSteps = maxSteps;
         this.chatMemory = MessageWindowChatMemory.builder().build();
+        this.skillTools = resolveSkillTools(List.of(defaultSkillsDir, agentSkillsDir));
+    }
+
+    protected List<Object> resolveSkillTools(List<String> skillDirs) {
+        List<Object> tools = new ArrayList<>();
+        List<String> effectiveSkillDirs = (skillDirs == null) ? List.of() : skillDirs.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(dir -> !dir.isEmpty())
+                .toList();
+        boolean hasAnySkill = effectiveSkillDirs.stream().anyMatch(ToolCallService::containsSkillFile);
+        if (!hasAnySkill) {
+            log.warn("No SKILL.md found under {}; skill tools disabled", effectiveSkillDirs);
+            return List.of();
+        }
+        SkillsTool.Builder builder = SkillsTool.builder();
+        for (String dir : effectiveSkillDirs) {
+            builder.addSkillsDirectory(dir);
+        }
+        tools.add(builder.build());
+        tools.add(FileSystemTools.builder().build());
+        tools.add(ShellTools.builder().build());
+        return List.copyOf(tools);
     }
 
     @PostConstruct
@@ -64,7 +96,7 @@ public class ToolCallService {
     }
 
     protected ToolCallAgent createAgent(LLMChatClient chatClient) {
-        return new ToolCallAgent(chatClient, maxSteps, mcpTools);
+        return new ToolCallAgent(chatClient, maxSteps, mcpTools, skillTools);
     }
 
     protected ToolCallSession createSession(String sessionId, ChatModel chatModel, String summarySystemPrompt) {
@@ -216,6 +248,23 @@ public class ToolCallService {
         List<Object> tools = new ArrayList<>(callbacks.length);
         Collections.addAll(tools, callbacks);
         return List.copyOf(tools);
+    }
+
+    private static boolean containsSkillFile(String root) {
+        if (root == null || root.isBlank()) {
+            return false;
+        }
+        java.nio.file.Path path = java.nio.file.Path.of(root).toAbsolutePath().normalize();
+        if (!Files.isDirectory(path)) {
+            return false;
+        }
+        try (Stream<java.nio.file.Path> stream = Files.walk(path, 4)) {
+            return stream.anyMatch(skillPath ->
+                    Files.isRegularFile(skillPath) && "SKILL.md".equals(skillPath.getFileName().toString()));
+        } catch (IOException e) {
+            log.warn("Failed to scan skills directory '{}': {}", path, e.getMessage());
+            return false;
+        }
     }
 
     private static void clearConversationBashSession(ToolCallAgent agent, String scopeId) {

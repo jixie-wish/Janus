@@ -19,8 +19,10 @@ public class SWEService extends ToolCallService {
     public SWEService(
             ApplicationContext applicationContext,
             @Value("${janus.agent.swe.max-steps:10}") int maxSteps,
-            @Value("${janus.agent.swe.workspace-root:workspace/swe}") String workspaceRoot) {
-        super(applicationContext, maxSteps);
+            @Value("${janus.agent.swe.workspace-root:workspace/swe}") String workspaceRoot,
+            @Value("${janus.agent.default.skills.dir:.agent/default/skills}") String defaultSkillsDir,
+            @Value("${janus.agent.swe.skills.dir:.agent/swe/skills}") String agentSkillsDir) {
+        super(applicationContext, maxSteps, defaultSkillsDir, agentSkillsDir);
         this.workspaceRoot = WorkspaceSupport.resolveWorkspaceRoot(workspaceRoot);
     }
 
@@ -32,7 +34,7 @@ public class SWEService extends ToolCallService {
 
     @Override
     protected ToolCallAgent createAgent(LLMChatClient chatClient) {
-        return new SWEAgent(chatClient, maxSteps, workspaceRoot, mcpTools);
+        return new SWEAgent(chatClient, maxSteps, workspaceRoot, mcpTools, skillTools);
     }
 
 }

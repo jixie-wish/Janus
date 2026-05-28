@@ -2,6 +2,7 @@ package com.wish.llm;
 
 import com.wish.models.context.BaseUserContext;
 import com.wish.models.context.Context;
+import com.wish.support.ToolCallingPromptSupport;
 import lombok.Getter;
 import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -12,8 +13,11 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.support.ToolCallbacks;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.ToolCallbackProvider;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -77,8 +81,31 @@ public class LLMChatClient {
         if (currentTools.isEmpty()) {
             prompt = new Prompt(messages);
         } else {
+            List<ToolCallback> callbacks = new ArrayList<>();
+            List<Object> methodTools = new ArrayList<>();
+            for (Object tool : currentTools) {
+                if (tool == null) {
+                    continue;
+                }
+                if (tool instanceof ToolCallback callback) {
+                    callbacks.add(callback);
+                    continue;
+                }
+                if (tool instanceof ToolCallbackProvider provider) {
+                    ToolCallback[] provided = provider.getToolCallbacks();
+                    if (provided != null && provided.length > 0) {
+                        Collections.addAll(callbacks, provided);
+                    }
+                    continue;
+                }
+                methodTools.add(tool);
+            }
+            if (!methodTools.isEmpty()) {
+                Collections.addAll(callbacks, ToolCallbacks.from(methodTools.toArray()));
+            }
             ToolCallingChatOptions options = ToolCallingChatOptions.builder()
-                    .toolCallbacks(ToolCallbacks.from(currentTools.toArray()))
+                    .toolCallbacks(callbacks.toArray(ToolCallback[]::new))
+                    .toolContext(ToolCallingPromptSupport.DEFAULT_TOOL_CONTEXT)
                     .internalToolExecutionEnabled(false)
                     .build();
             prompt = new Prompt(messages, options);
