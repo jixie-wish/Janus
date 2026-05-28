@@ -21,9 +21,18 @@ public final class AgentRunSupport {
         return CURRENT_CONVERSATION_ID.get();
     }
 
+    /** Session id when in a persistent session; otherwise the context partition id. */
+    static String resolveToolScopeId(Context context) {
+        String sessionId = context.getSessionId();
+        if (sessionId != null && !sessionId.isBlank()) {
+            return sessionId;
+        }
+        return context.getConversation();
+    }
+
     public static String runWithTokenLogging(Context context, Supplier<String> action) {
         String previousConversationId = CURRENT_CONVERSATION_ID.get();
-        CURRENT_CONVERSATION_ID.set(context.getConversation());
+        CURRENT_CONVERSATION_ID.set(resolveToolScopeId(context));
         TokenUsageCounter usageBefore = context.getTokenUsage();
         Map<String, TokenUsageCounter> detailsBefore = context.getTokenUsageDetails();
         try {

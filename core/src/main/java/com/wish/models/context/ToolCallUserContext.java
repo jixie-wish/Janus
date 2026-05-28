@@ -25,13 +25,38 @@ public class ToolCallUserContext extends BaseUserContext {
     @Setter
     private List<AssistantMessage.ToolCall> currentToolCalls = List.of();
 
+    /**
+     * Optimization counter for drift control: consecutive assistant-only steps (no tool calls)
+     * within one run. Used to inject stronger ephemeral reminders.
+     */
+    @Getter
+    private int assistantOnlyStepCount;
+
     public ToolCallUserContext(String conversationId, ChatMemory chatMemory) {
-        super(conversationId, chatMemory);
+        this(conversationId, null, chatMemory);
+    }
+
+    public ToolCallUserContext(String conversationId, String sessionId, ChatMemory chatMemory) {
+        super(conversationId, sessionId, chatMemory);
     }
 
     public void clearStepState() {
         currentChatResponse = null;
         currentChatPrompt = null;
         currentToolCalls = Collections.emptyList();
+    }
+
+    public void incrementAssistantOnlyStepCount() {
+        assistantOnlyStepCount++;
+    }
+
+    public void resetAssistantOnlyStepCount() {
+        assistantOnlyStepCount = 0;
+    }
+
+    @Override
+    public void beginRun() {
+        super.beginRun();
+        resetAssistantOnlyStepCount();
     }
 }

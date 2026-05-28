@@ -44,6 +44,17 @@ public class SWEAgent extends ToolCallAgent {
 
     private static final String NEXT_STEP_PROMPT = "";
 
+    private static final String SESSION_SUMMARY_SYSTEM_PROMPT = """
+            You summarize one completed software-engineering task for long-term session memory.
+            Use the same language as the user's request. Structure the summary clearly:
+            - Current task goal
+            - Steps completed
+            - Key findings
+            - Unresolved issues
+            - Next-step plan
+            Keep it concise. Do not include raw logs or stack traces.
+            """;
+
     public SWEAgent(LLMChatClient llmChatClient, int maxSteps, Path workspaceRoot) {
         this(llmChatClient, maxSteps, workspaceRoot, List.of());
     }
@@ -60,6 +71,7 @@ public class SWEAgent extends ToolCallAgent {
                 SYSTEM_PROMPT.formatted(
                         VIEW_WINDOW_LINES, workspaceRoot.toAbsolutePath().normalize()),
                 NEXT_STEP_PROMPT,
+                SESSION_SUMMARY_SYSTEM_PROMPT,
                 llmChatClient,
                 maxSteps,
                 mcpTools,

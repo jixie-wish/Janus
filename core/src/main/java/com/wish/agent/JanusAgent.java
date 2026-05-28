@@ -3,6 +3,7 @@ package com.wish.agent;
 import com.wish.agent.base.ToolCallAgent;
 import com.wish.llm.LLMChatClient;
 import com.wish.tools.AskHuman;
+import com.wish.tools.CreateChatCompletionTool;
 import com.wish.tools.PythonExecuteTool;
 import com.wish.tools.StrReplaceEditor;
 import com.wish.tools.TerminateTool;
@@ -23,12 +24,27 @@ public class JanusAgent extends ToolCallAgent {
                     + "You have various tools at your disposal that you can call upon to efficiently complete complex requests. "
                     + "Whether it's programming, information retrieval, file processing, web browsing, or human interaction "
                     + "(only for extreme cases), you can handle it all. "
-                    + "The initial directory is: %s";
+                    + "The initial directory is: %s. "
+                    + "Deliver the final user-visible answer via create_chat_completion, then call terminate. "
+                    + "Do not put the final answer only in assistant message text.";
 
     private static final String NEXT_STEP_PROMPT = """
-            Based on user needs, proactively select the most appropriate tool or combination of tools. For complex tasks, you can break down the problem and use different tools step by step to solve it. After using each tool, clearly explain the execution results and suggest the next steps.
+            Select the single best action for this turn:
+            - Use tools (python_execute, plan, etc.) when needed to gather facts or perform work.
+            - When the user request is fully answered, call create_chat_completion(response=...) with the complete answer.
+            - After create_chat_completion appears in the conversation, call terminate(status="success") only.
+            - Do not repeat follow-up offers or assistant-only summaries after answering.
+            """;
 
-            If you want to stop the interaction at any point, use the `terminate` tool/function call.
+    private static final String SESSION_SUMMARY_SYSTEM_PROMPT = """
+            You summarize one completed general assistant task for long-term session memory.
+            Use the same language as the user's request. Structure the summary clearly:
+            - Current task goal
+            - Steps completed (tools used and main results)
+            - Key findings or conclusions
+            - Unresolved issues, if any
+            - Suggested next steps, if any
+            Keep it concise. Do not include raw logs or stack traces.
             """;
 
     private static List<Object> builtinTools() {
@@ -37,6 +53,7 @@ public class JanusAgent extends ToolCallAgent {
                 new PythonExecuteTool(),
                 new StrReplaceEditor(),
                 new AskHuman(),
+                new CreateChatCompletionTool(),
                 new TerminateTool());
     }
 
@@ -50,6 +67,7 @@ public class JanusAgent extends ToolCallAgent {
                 DESCRIPTION,
                 SYSTEM_PROMPT.formatted(workspaceRoot.toAbsolutePath().normalize()),
                 NEXT_STEP_PROMPT,
+                SESSION_SUMMARY_SYSTEM_PROMPT,
                 llmChatClient,
                 maxSteps,
                 mcpTools,
