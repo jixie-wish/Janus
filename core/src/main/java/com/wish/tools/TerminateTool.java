@@ -3,7 +3,7 @@ package com.wish.tools;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
-/** OpenManus {@code app.tool.terminate.Terminate}. */
+/** Tool for explicitly ending agent execution. */
 public class TerminateTool {
 
     @Tool(

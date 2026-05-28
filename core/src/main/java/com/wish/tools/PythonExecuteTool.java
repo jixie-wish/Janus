@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-/** OpenManus {@code app.tool.python_execute.PythonExecute}. */
+/** Tool for running Python snippets with timeout protection. */
 @Slf4j
 public class PythonExecuteTool {
 

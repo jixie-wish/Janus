@@ -6,7 +6,7 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import java.io.Console;
 import java.util.Scanner;
 
-/** OpenManus {@code app.tool.ask_human.AskHuman}. */
+/** Tool that asks for direct user input from terminal. */
 public class AskHuman {
 
     @Tool(name = "ask_human", description = "Use this tool to ask human for help.")

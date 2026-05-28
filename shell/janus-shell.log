@@ -22,3 +22,5 @@
 1779862144403:janus request --prompt "修改脚本/Users/jixie/sbox/Janus/shell/workspace/add.py，改为计算减法"
 1779862190774:janus request --prompt "修改脚本/Users/jixie/sbox/Janus/shell/workspace/add.py，改为计算乘法"
 1779863423255:janus request --prompt "修改脚本/Users/jixie/sbox/Janus/shell/workspace/add.py，改为计算加法"
+1779873412870:da request -p "帮我生成一份date,product,amount的sales测试数据，csv格式"
+1779873566456:da request -p "帮我分析每个product的amount，并制作成饼图"

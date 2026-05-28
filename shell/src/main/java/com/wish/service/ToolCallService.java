@@ -1,9 +1,10 @@
 package com.wish.service;
 
-import com.wish.agent.ToolCallAgent;
-import com.wish.models.context.Context.TokenUsageCounter;
+import com.wish.agent.base.ToolCallAgent;
 import com.wish.models.context.ToolCallUserContext;
 import com.wish.llm.LLMChatClient;
+import com.wish.support.AgentRunSupport;
+import com.wish.tools.BashTool;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
@@ -35,7 +36,7 @@ public class ToolCallService {
 
     public ToolCallService(
             ApplicationContext applicationContext,
-            @Value("${janus.agent.max-steps:10}") int maxSteps) {
+            @Value("${janus.agent.tool-call.max-steps:10}") int maxSteps) {
         this.chatModels = resolveChatModels(applicationContext);
         this.mcpTools = resolveMcpTools(applicationContext);
         this.maxSteps = maxSteps;
@@ -102,16 +103,7 @@ public class ToolCallService {
 
         ToolCallUserContext context = resolveContext(modelKey, conversationKey, ephemeral);
         try {
-            TokenUsageCounter usageBefore = context.getTokenUsage();
-            Map<String, TokenUsageCounter> detailsBefore = context.getTokenUsageDetails();
-            String result = agent.run(context, prompt);
-            TokenUsageCounter usageAfter = context.getTokenUsage();
-            Map<String, TokenUsageCounter> detailsAfter = context.getTokenUsageDetails();
-            logTokenUsage(
-                    deltaUsage(usageAfter, usageBefore),
-                    usageAfter,
-                    deltaUsageDetails(detailsAfter, detailsBefore),
-                    detailsAfter);
+            String result = AgentRunSupport.runWithTokenLogging(context, () -> agent.run(context, prompt));
             if (ephemeral) {
                 return result;
             }
@@ -119,6 +111,7 @@ public class ToolCallService {
         } finally {
             if (ephemeral) {
                 chatMemory.clear(conversationKey);
+                clearConversationBashSession(agent, conversationKey);
             }
         }
     }
@@ -146,6 +139,8 @@ public class ToolCallService {
         String key = sessionKey(modelKey, normalized);
         ToolCallUserContext removed = sessions.remove(key);
         chatMemory.clear(normalized);
+        ToolCallAgent agent = agents.get(modelKey);
+        clearConversationBashSession(agent, normalized);
         if (removed == null) {
             log.info("No session to clear for conversation '{}' (model={})", normalized, modelKey);
         } else {
@@ -155,56 +150,6 @@ public class ToolCallService {
 
     protected static String sessionKey(String modelKey, String conversationId) {
         return modelKey + ":" + conversationId;
-    }
-
-    private static TokenUsageCounter deltaUsage(TokenUsageCounter after, TokenUsageCounter before) {
-        return after.subtract(before);
-    }
-
-    protected void logTokenUsage(
-            TokenUsageCounter thisCall,
-            TokenUsageCounter cumulative,
-            Map<String, TokenUsageCounter> thisCallByTag,
-            Map<String, TokenUsageCounter> cumulativeByTag) {
-        log.info(
-                "Token this call (prompt/completion/total): {}/{}/{}",
-                thisCall.getPromptTokens(),
-                thisCall.getCompletionTokens(),
-                thisCall.getTotalTokens());
-        logTokenUsageByTag("Token this call", thisCallByTag);
-        log.info(
-                "Token cumulative (prompt/completion/total): {}/{}/{}",
-                cumulative.getPromptTokens(),
-                cumulative.getCompletionTokens(),
-                cumulative.getTotalTokens());
-        logTokenUsageByTag("Token cumulative", cumulativeByTag);
-    }
-
-    private static Map<String, TokenUsageCounter> deltaUsageDetails(
-            Map<String, TokenUsageCounter> after, Map<String, TokenUsageCounter> before) {
-        Set<String> tags = new LinkedHashSet<>();
-        tags.addAll(after.keySet());
-        tags.addAll(before.keySet());
-        Map<String, TokenUsageCounter> delta = new LinkedHashMap<>();
-        for (String tag : tags) {
-            TokenUsageCounter afterUsage = after.getOrDefault(tag, new TokenUsageCounter());
-            TokenUsageCounter beforeUsage = before.getOrDefault(tag, new TokenUsageCounter());
-            delta.put(tag, afterUsage.subtract(beforeUsage));
-        }
-        return delta;
-    }
-
-    private void logTokenUsageByTag(String label, Map<String, TokenUsageCounter> usageByTag) {
-        if (usageByTag.isEmpty()) {
-            return;
-        }
-        usageByTag.forEach((tag, usage) -> log.info(
-                "{} [{}] (prompt/completion/total): {}/{}/{}",
-                label,
-                tag,
-                usage.getPromptTokens(),
-                usage.getCompletionTokens(),
-                usage.getTotalTokens()));
     }
 
     protected static String normalizeConversationId(String conversationId) {
@@ -255,5 +200,28 @@ public class ToolCallService {
         List<Object> tools = new ArrayList<>(callbacks.length);
         Collections.addAll(tools, callbacks);
         return List.copyOf(tools);
+    }
+
+    private static void clearConversationBashSession(ToolCallAgent agent, String conversationId) {
+        if (agent == null || conversationId == null || conversationId.isBlank()) {
+            return;
+        }
+        findBashTools(agent).forEach(tool -> tool.clearConversationSession(conversationId));
+    }
+
+    private static List<BashTool> findBashTools(ToolCallAgent agent) {
+        List<BashTool> bashTools = new ArrayList<>();
+        LLMChatClient client = agent.getChatClient();
+        for (Object tool : client.getDefaultTools()) {
+            if (tool instanceof BashTool bashTool) {
+                bashTools.add(bashTool);
+            }
+        }
+        for (Object tool : client.getExtraTools()) {
+            if (tool instanceof BashTool bashTool) {
+                bashTools.add(bashTool);
+            }
+        }
+        return bashTools;
     }
 }

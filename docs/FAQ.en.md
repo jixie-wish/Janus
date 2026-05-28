@@ -1,65 +1,45 @@
-# Janus FAQ (troubleshooting)
+# Janus FAQ
 
-> [中文](FAQ.md) · Shell: [shell/docs/SHELL.en.md](../shell/docs/SHELL.en.md) · Agent flow: [core/docs/AGENT-FLOW.en.md](../core/docs/AGENT-FLOW.en.md)
-
-Summary of common ToolCall Agent / Shell behavior and fixes (including notes from 2026-05-22).
+> [中文](FAQ.md) · Shell: [shell/docs/SHELL.en.md](../shell/docs/SHELL.en.md) · Framework: [core/docs/AGENT-FLOW.en.md](../core/docs/AGENT-FLOW.en.md)
 
 ---
 
-## 1. `terminate` and Step output
+## Shell and workspace
 
-- `terminate` returns a **session-end signal**, not the user-facing answer. Use `create_chat_completion` for the answer first.
-- Old `extractActResult` scanned **full** tool history and duplicated Step 1 text in Step 2. Current code matches **this step’s** `currentToolCalls` only (aligned with OpenManus).
+| Symptom | Cause / fix |
+|---------|-------------|
+| Files under `shell/workspace/da/...` | Process started under `shell/`; relative `workspace/da` resolves to CWD. Start from **repo root**, or set absolute `janus.agent.da.workspace-root`. |
+| `-c` does not remember | Same shell process and `-m` required; memory cleared on exit. |
+| core changes ignored | `mvn -pl core install -DskipTests`, restart shell. |
 
-## 2. `extractActResult`
+---
 
-Builds the step result from tools executed in **this** `act()` (by tool-call id), sets `FINISHED` on `terminate`, and logs those tool results.
+## Agent behavior
 
-## 3. Why 3–4 steps?
+| Symptom | Notes |
+|---------|-------|
+| Last step only shows `terminate` | `terminate` ends the run; user-facing text should come from `create_chat_completion` or the agent’s main tools. |
+| 3–4 steps per request | Model may answer then terminate, or treat long next-step text as a new task. |
+| `da` chart errors | Run `npm install` in `core/chart-visualization`; check paths under workspace. |
+| `swe` commands interfere | Same `-c` shares one bash session; use a new `-c` or `clear-session`. |
 
-- **3 steps**: answer via tool → plain assistant text (no `terminate` yet) → `terminate`.
-- **4 steps** (long `nextStep`): model treats each injected `Decide the single best action...` **User** line as a new task and calls `create_chat_completion` again. OpenManus uses a much shorter default next-step prompt.
+---
 
-## 4. `nextStep` injection
+## Model and build
 
-Added before every **`think()`**, not before `act()`. System + user `-p` are added once at `run()` start (system skipped on continuing conversations).
+| Symptom | Fix |
+|---------|-----|
+| `engine is not available temporarily` | Transient API/model issue; check `spring.ai.openai.*`. |
+| Maven plugin unresolved in IDE | Use `.mvn/settings.xml` or a mirror. |
+| Missing `com.wish:core` | `mvn install -DskipTests` from repo root. |
 
-## 5. Prompt layering
+---
 
-- **System**: role and general rules.
-- **Next step**: per-turn action (short; avoid looking like a new user question).
-- **Tool descriptions**: per-tool semantics.
+## Quick checks
 
-## 6. `conversation-id` (`-c`)
+```text
+shell:> tool-call request -p "hello" -m sensenova
+shell:> da request -p "list files in workspace/da" -m sensenova -c test
+```
 
-- Without `-c`: new agent + memory per request.
-- With `-c`: reuse in-process memory in the same shell session; lost after exit.
-- `tool-call clear-session -c <id>` drops cache.
-
-## 7. “What did I ask just now?” without memory
-
-The model may echo **only the current prompt** (“just now” = this message), not a prior turn. That is not the same as remembering an earlier question (e.g. “Tell me about China”). Use `-c` for multi-turn CLI memory.
-
-## 8. OpenManus comparison
-
-Same two lifecycle tools and next-step-as-user pattern; Janus Shell isolates requests unless `-c` is set. OpenManus can retain memory across `run()` on the same agent instance.
-
-## 9. Quick tests
-
-See [FAQ.md §9](FAQ.md#9-推荐验证命令) (Chinese section with command examples).
-
-## 10. Maven: `Unresolved plugin: maven-install-plugin`
-
-- **Symptom**: IDE reports `maven-install-plugin:3.0.1` unresolved; CLI may still work.
-- **Cause**: Slow or blocked access to Maven Central; IDE often ignores `.mvn/maven.config` and does not use `.mvn/settings.xml` (Aliyun mirror). Stale `*.lastUpdated` under `~/.m2/repository` can make it worse.
-- **Fix**: `cp .mvn/settings.xml ~/.m2/settings.xml`, remove `maven-install-plugin-*.lastUpdated` if present, point IDE Maven user settings to `.mvn/settings.xml`, reload Maven / Java language server. Verify with `mvn -s .mvn/settings.xml validate`.
-
-See [FAQ.md §10](FAQ.md#10-mavenunresolved-plugin-maven-install-plugin) for full steps (Chinese).
-
-## 11. Maven: cannot resolve `com.wish:Janus` / `com.wish:core`
-
-Local multi-module artifacts are not on Aliyun. Build from the repo root (`mvn install -DskipTests`) or use `mvn -pl shell -am install` so parent and `core` are installed into `~/.m2` first. See [FAQ.md §11](FAQ.md#11-maven找不到-comwishjanus--comwishcore去阿里云下载失败).
-
-## 12. Possible follow-ups
-
-Shorter next-step prompt, hide `terminate` text in Shell output, skip redundant text-only steps, persistent sessions.
+API without shell: `cd model-verify && python3 sensenova-6.7-flash-lite.py --prompt "hello"`

@@ -39,6 +39,10 @@ public class LLMChatClient {
         this.extraTools.addAll(tools);
     }
 
+    public List<Object> getExtraTools() {
+        return List.copyOf(extraTools);
+    }
+
     public Pair<ChatResponse, Prompt> askWithTools(BaseUserContext userContext, List<String> newMessages, List<Object> tools) {
         List<Object> currentTools = new ArrayList<>();
         currentTools.addAll(defaultTools);

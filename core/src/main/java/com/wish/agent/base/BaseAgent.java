@@ -1,4 +1,4 @@
-package com.wish.agent;
+package com.wish.agent.base;
 
 import com.wish.llm.LLMChatClient;
 import com.wish.models.AgentState;

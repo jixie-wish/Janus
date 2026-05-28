@@ -1,6 +1,6 @@
 package com.wish.service;
 
-import com.wish.agent.JanusAgent;
+import com.wish.agent.SWEAgent;
 import com.wish.agent.base.ToolCallAgent;
 import com.wish.llm.LLMChatClient;
 import lombok.extern.slf4j.Slf4j;
@@ -12,14 +12,14 @@ import java.nio.file.Path;
 
 @Slf4j
 @Service
-public class JanusService extends ToolCallService {
+public class SWEService extends ToolCallService {
 
     private final Path workspaceRoot;
 
-    public JanusService(
+    public SWEService(
             ApplicationContext applicationContext,
-            @Value("${janus.agent.janus.max-steps:10}") int maxSteps,
-            @Value("${janus.agent.janus.workspace-root:workspace/janus}") String workspaceRoot) {
+            @Value("${janus.agent.swe.max-steps:10}") int maxSteps,
+            @Value("${janus.agent.swe.workspace-root:workspace/swe}") String workspaceRoot) {
         super(applicationContext, maxSteps);
         this.workspaceRoot = WorkspaceSupport.resolveWorkspaceRoot(workspaceRoot);
     }
@@ -27,12 +27,11 @@ public class JanusService extends ToolCallService {
     @Override
     protected void logStartup() {
         super.logStartup();
-        log.info("Janus workspace root: {}", workspaceRoot);
+        log.info("SWE workspace root: {}", workspaceRoot);
     }
 
     @Override
     protected ToolCallAgent createAgent(LLMChatClient chatClient) {
-        return new JanusAgent(chatClient, maxSteps, workspaceRoot, mcpTools);
+        return new SWEAgent(chatClient, maxSteps, workspaceRoot, mcpTools);
     }
-
 }
