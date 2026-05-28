@@ -41,42 +41,64 @@ Shared shape for every group:
 |--------|-------|-------------|
 | `--prompt` | `-p` | Task text (required) |
 | `--model` | `-m` | Model alias, default `sensenova` |
-| `--conversation-id` | `-c` | Reuse history in this process |
+| `--conversation-id` | `-c` | Reuse **Session** in this process; omit for one-off (no session memory) |
 
-With `-c`, the first output line echoes `conversation-id`. Memory is lost after shell exit.
+With `-c`, the first output line echoes `conversation-id`. Session is lost after shell exit. Each `request` gets its own **Context**; after `run`, a 2-message summary is stored in session memory. See [AGENT-FLOW.en.md](../../core/docs/AGENT-FLOW.en.md).
 
 ---
 
 ## What one `request` does
 
-Shell does not implement agent logic; it builds a context and calls `agent.run`:
+Shell does not implement agent logic; `ToolCallService` manages Session / Context and `agent.run`:
 
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant SVC as Service
-    participant CTX as UserContext
+    participant SVC as ToolCallService
+    participant SES as ToolCallSession
+    participant CTX as Context
     participant AG as Agent
 
-    U->>SVC: da request -p … [-m] [-c]
+    U->>SVC: janus request -p … [-m] [-c]
     alt with -c
-        SVC->>CTX: reuse or create partition
+        SVC->>SES: reuse or create Session
+        SES->>CTX: beginPrompt (hydrate session memory)
     else no -c
-        SVC->>CTX: ephemeral partition (cleared after run)
+        SVC->>CTX: ephemeral Context
     end
     SVC->>AG: run(context, prompt)
     loop up to maxSteps
         AG->>AG: step → think / act
     end
     AG-->>SVC: Step 1…n
+    alt with -c
+        SVC->>SES: endPrompt(result) → session memory
+    else no -c
+        SVC->>CTX: clear ephemeral partition
+    end
     SVC-->>U: output
 ```
 
 | Point | Notes |
 |-------|--------|
-| Same `-m`, multiple `-c` | One agent instance; **memory partitions** per `-c` |
-| `swe` + `-c` | One **bash** session per `-c` (`cd` persists) |
+| Same `-m`, multiple `-c` | One agent instance; **Session** per `-c` |
+| Each `request` | New **Context** partition; summarized then cleared after `run` |
+| `swe` + `-c` | One **bash** session per `-c` (scope = sessionId) |
 | Inside the agent | [AGENT-FLOW.en.md](../../core/docs/AGENT-FLOW.en.md) |
+
+### Memory and multi-step optimizations (CLI)
+
+With `-c`, session memory stores **two messages per prompt** (original `-p` + summarized outcome), not per-step internal guidance.
+
+| Situation | What to do |
+|-----------|------------|
+| First continuation after upgrading core | `clear-session -c <id>` to drop stale session partitions |
+| One-off question | Omit `-c` (ephemeral: no session extract, context cleared after `run`) |
+| Many steps, only `terminate` text visible | Agent should finalize via `create_chat_completion` or main tools — see [AGENT-FLOW.en.md](../../core/docs/AGENT-FLOW.en.md) |
+| Next prompt misreads “continue” as a new task | Often old session data; `clear-session` and retry |
+| `swe` cwd/env across prompts | Reuse same `-c`; use a new `-c` for unrelated work |
+
+`ToolCallService` wires each agent’s `sessionSummarySystemPrompt()` and `ChatModel` when creating `ToolCallSession`.
 
 ---
 
@@ -159,6 +181,6 @@ Do not commit real keys; use `application-local.properties` if gitignored.
 | Files under `shell/workspace/...` | Start from **repo root**, or set absolute `workspace-root` |
 | core changes ignored | `mvn -pl core install -DskipTests`, restart shell |
 | `da` chart errors | Run `npm install` in `core/chart-visualization` |
-| Many duplicate steps | See [FAQ](../../docs/FAQ.en.md) |
+| Many duplicate steps | See [FAQ — memory and multi-step](../../docs/FAQ.en.md#memory-and-multi-step-behavior) |
 
 Also: `help`, `help da`, `clear`, `exit`.

@@ -25,6 +25,18 @@
 
 ---
 
+## Memory and multi-step behavior
+
+| Symptom | Cause / fix |
+|---------|-------------|
+| Second `-c` prompt treats “continue” or system text as user input | Stale **session partition** from before optimizations; run `<group> clear-session -c <id>`. See [AGENT-FLOW.en.md](../core/docs/AGENT-FLOW.en.md#memory-and-multi-step-optimizations). |
+| Many steps, repeated similar replies | `nextStepPrompt` is **ephemeral**; under the `create_chat_completion` contract, assistant-only drafts are not stored and ephemeral reminders are injected. |
+| Continuation lacks prior step detail | **By design**: session stores 2 summary messages per prompt, not full `Step 1…n` traces. |
+| No `-c` but still “remembers” | Confirm you did not reuse `-c`; ephemeral runs clear the context partition on exit. |
+| Odd behavior after upgrading core | Restart shell and `clear-session` for affected `-c` ids. |
+
+---
+
 ## Model and build
 
 | Symptom | Fix |

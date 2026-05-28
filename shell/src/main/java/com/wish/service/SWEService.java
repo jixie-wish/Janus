@@ -34,4 +34,5 @@ public class SWEService extends ToolCallService {
     protected ToolCallAgent createAgent(LLMChatClient chatClient) {
         return new SWEAgent(chatClient, maxSteps, workspaceRoot, mcpTools);
     }
+
 }

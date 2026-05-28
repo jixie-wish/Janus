@@ -44,6 +44,18 @@ public class LLMChatClient {
     }
 
     public Pair<ChatResponse, Prompt> askWithTools(BaseUserContext userContext, List<String> newMessages, List<Object> tools) {
+        return askWithTools(userContext, newMessages, tools, true);
+    }
+
+    /**
+     * @param persistNewMessages when false, {@code newMessages} are included in this request's {@link Prompt}
+     *                           but not stored in {@link ChatMemory}. Optimization: per-step guidance (e.g.
+     *                           {@code nextStepPrompt}) must not be persisted as user turns—otherwise the next
+     *                           prompt's {@link com.wish.models.session.PromptRunSummarizer} and session memory
+     *                           inherit internal instructions and multi-turn context degrades.
+     */
+    public Pair<ChatResponse, Prompt> askWithTools(
+            BaseUserContext userContext, List<String> newMessages, List<Object> tools, boolean persistNewMessages) {
         List<Object> currentTools = new ArrayList<>();
         currentTools.addAll(defaultTools);
         currentTools.addAll(extraTools);
@@ -56,7 +68,9 @@ public class LLMChatClient {
             }
             UserMessage userMessage = new UserMessage(user);
             messages.add(userMessage);
-            userContext.addMemory(userMessage);
+            if (persistNewMessages) {
+                userContext.addMemory(userMessage);
+            }
         }
 
         Prompt prompt;

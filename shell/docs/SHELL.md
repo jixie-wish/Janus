@@ -41,42 +41,64 @@ mvn -f shell/pom.xml spring-boot:run
 |------|------|------|
 | `--prompt` | `-p` | 本轮任务（必填） |
 | `--model` | `-m` | 模型别名，默认 `sensenova` |
-| `--conversation-id` | `-c` | 同进程内续聊；不传则单次临时会话 |
+| `--conversation-id` | `-c` | 同进程内续聊（**Session** id）；不传则单次临时请求，不写入 session memory |
 
-带 `-c` 时输出首行会回显 `conversation-id`；退出 Shell 后记忆不保留。
+带 `-c` 时输出首行会回显 `conversation-id`；退出 Shell 后 Session 不保留。每个 `-c` 下可多次 `request`；每次 `request` 使用独立 **Context**，结束后摘要为 2 条消息写入 session memory。详见 [AGENT-FLOW.md](../../core/docs/AGENT-FLOW.md)。
 
 ---
 
 ## 一次 `request` 怎么走
 
-Shell 不实现 Agent 逻辑，只负责组好 Context 并调用 `agent.run`：
+Shell 不实现 Agent 逻辑；`ToolCallService` 负责 Session / Context 与 `agent.run`：
 
 ```mermaid
 sequenceDiagram
     participant U as 用户
-    participant SVC as Service
-    participant CTX as UserContext
+    participant SVC as ToolCallService
+    participant SES as ToolCallSession
+    participant CTX as Context
     participant AG as Agent
 
-    U->>SVC: da request -p … [-m] [-c]
+    U->>SVC: janus request -p … [-m] [-c]
     alt 有 -c
-        SVC->>CTX: 复用或新建会话分区
+        SVC->>SES: 复用或新建 Session
+        SES->>CTX: beginPrompt（灌入 session memory）
     else 无 -c
-        SVC->>CTX: 临时分区（run 后清空）
+        SVC->>CTX: 临时 Context（ephemeral）
     end
     SVC->>AG: run(context, prompt)
     loop 至多 maxSteps
         AG->>AG: step → think / act
     end
     AG-->>SVC: Step 1…n
+    alt 有 -c
+        SVC->>SES: endPrompt(result) 摘要入 session memory
+    else 无 -c
+        SVC->>CTX: clear 临时分区
+    end
     SVC-->>U: 文本输出
 ```
 
 | 要点 | 说明 |
 |------|------|
-| 同 `-m` 多 `-c` | 共用同一 Agent 实例，**Memory 分区**按 `-c` 隔离 |
-| `swe` + `-c` | 同一 `-c` 共用一条 **bash** 会话（`cd` 等会保留） |
+| 同 `-m` 多 `-c` | 共用同一 Agent 实例；**Session** 按 `-c` 隔离 |
+| 每次 `request` | 新建 **Context** 分区；`run` 结束后摘要进 session，context 分区清空 |
+| `swe` + `-c` | 同一 `-c` 共用一条 **bash** 会话（`cd` 等会保留，scope = sessionId） |
 | Agent 内部流程 | 见 [AGENT-FLOW.md](../../core/docs/AGENT-FLOW.md) |
+
+### 记忆与多步优化（与 CLI 相关）
+
+框架在带 `-c` 时**不会**把每步内部引导写入 session，只写入「本轮 `-p` 原文 + 摘要结果」两条。Shell 侧只需理解下列用法：
+
+| 场景 | 建议 |
+|------|------|
+| 首次续聊 / 升级 core 后测试 | 对旧 `-c` 执行 `clear-session -c <id>`，避免优化前写入的脏 session 分区 |
+| 单次问答、不需跨 prompt 记忆 | **不要**传 `-c`（`runEphemeral`：不摘要、结束即清 context） |
+| 多步只 `terminate`、看不到正文 | 该 Agent 应通过 `create_chat_completion`（或主工具）交付答案；见 [AGENT-FLOW.md](../../core/docs/AGENT-FLOW.md) |
+| 第二步把「系统/继续」当新任务 | 多为旧 session 含步内引导；`clear-session` 后重试 |
+| `swe` 目录/环境要跨轮保留 | 同一 `-c` 复用 bash；换任务用新 `-c` |
+
+`ToolCallService` 创建 `ToolCallSession` 时注入当前 Agent 的 `sessionSummarySystemPrompt()` 与 `ChatModel`（`janus` / `da` / `swe` 各自摘要结构不同，定义在对应 Agent 类中）。
 
 ---
 
@@ -167,6 +189,6 @@ janus.agent.swe.workspace-root=workspace/swe
 | 文件生成在 `shell/workspace/...` | 从 **Janus 根目录** 启动，或把 `workspace-root` 改为绝对路径 |
 | 修改 core 未生效 | `mvn -pl core install -DskipTests` 后重启 shell |
 | `da` 出图失败 | 在 `core/chart-visualization` 执行 `npm install` |
-| 多步重复、不结束 | 见 [FAQ](../../docs/FAQ.md) |
+| 多步重复、不结束 | 见 [FAQ — 记忆与多步行为](../../docs/FAQ.md#记忆与多步行为) |
 
 其它 Shell 命令：`help`、`help da`、`clear`、`exit`。

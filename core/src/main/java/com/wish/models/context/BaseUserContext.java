@@ -11,7 +11,8 @@ import org.springframework.ai.chat.model.ChatResponse;
 import java.util.List;
 
 /**
- * Per-conversation state for agent runs. Cached by shell services; not stored on the agent.
+ * Per-prompt-run state for agent {@code run}. One instance per {@code Session#beginPrompt};
+ * shell services cache {@link com.wish.models.session.Session}, not individual contexts.
  */
 @Getter
 public class BaseUserContext extends Context{
@@ -23,7 +24,11 @@ public class BaseUserContext extends Context{
 
 
     public BaseUserContext(String conversationId, ChatMemory chatMemory) {
-        super(conversationId, chatMemory);
+        this(conversationId, null, chatMemory);
+    }
+
+    public BaseUserContext(String conversationId, String sessionId, ChatMemory chatMemory) {
+        super(conversationId, sessionId, chatMemory);
         this.currentStep = 0;
     }
 
@@ -96,5 +101,21 @@ public class BaseUserContext extends Context{
         return chatMemory.get(conversation);
     }
 
-
+    /**
+     * Messages produced during this prompt run (excludes session hydration).
+     * Used as input to session summarization; excludes ephemeral nextStepPrompt when
+     * {@link com.wish.llm.LLMChatClient#askWithTools} is called with {@code persistNewMessages=false}.
+     */
+    public List<Message> getPromptMessages() {
+        List<Message> messages = getAllMessages();
+        if (messages == null || messages.isEmpty()) {
+            return List.of();
+        }
+        int from = getSessionHydrationMessageCount();
+        if (from >= messages.size()) {
+            return List.of();
+        }
+        return List.copyOf(messages.subList(from, messages.size()));
+    }
 }
+

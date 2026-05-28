@@ -34,4 +34,5 @@ public class DAService extends ToolCallService {
     protected ToolCallAgent createAgent(LLMChatClient chatClient) {
         return new DataAnalysisAgent(chatClient, maxSteps, workspaceRoot, mcpTools);
     }
+
 }

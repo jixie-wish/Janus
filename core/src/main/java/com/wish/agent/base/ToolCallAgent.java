@@ -17,6 +17,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -37,18 +38,53 @@ public class ToolCallAgent extends ReactAgent {
             - Do not send a follow-up summary as assistant text after answering.
             """;
 
+    private static final String CREATE_CHAT_COMPLETION_REMINDER = """
+            You already drafted an answer in a previous step. Do not output assistant text again.
+            Call create_chat_completion(response=...) with the full user-visible answer this turn, \
+            then call terminate in the next turn.
+            """;
+
+    /** Default session-memory summarizer instructions when a subclass does not override. */
+    public static final String DEFAULT_SESSION_SUMMARY_SYSTEM_PROMPT = """
+            You summarize one completed agent task for long-term session memory.
+            Output 2-5 concise sentences: what was requested, what was done, and the outcome.
+            Use the same language as the user's request. Do not include raw logs or stack traces.
+            """;
+
     private static final List<Object> DEFAULT_BUILTIN_TOOLS =
             List.of(new CreateChatCompletionTool(), new TerminateTool());
 
     private final List<Object> mcpTools = new java.util.ArrayList<>();
     private final ToolCallingManager toolCallingManager;
+    /** Optimization: if true, enforce "answer via create_chat_completion then terminate" to reduce drift. */
+    private final boolean createChatCompletionContract;
+
+    private static final String SESSION_SUMMARY_SYSTEM_PROMPT = """
+            You summarize one completed chat turn for long-term session memory.
+            Use the same language as the user's request. Structure the summary clearly:
+            - User question or intent
+            - Final answer delivered to the user
+            - Any follow-up the user may care about
+            Keep it concise. Do not include raw logs or stack traces.
+            """;
+
+    private final String sessionSummarySystemPrompt;
 
     public ToolCallAgent(LLMChatClient llmChatClient, int maxSteps) {
         this(llmChatClient, maxSteps, List.of());
     }
 
     public ToolCallAgent(LLMChatClient llmChatClient, int maxSteps, List<Object> mcpTools) {
-        this(NAME, DESCRIPTION, SYSTEM_PROMPT, NEXT_STEP_PROMPT, llmChatClient, maxSteps, mcpTools, DEFAULT_BUILTIN_TOOLS);
+        this(
+                NAME,
+                DESCRIPTION,
+                SYSTEM_PROMPT,
+                NEXT_STEP_PROMPT,
+                SESSION_SUMMARY_SYSTEM_PROMPT,
+                llmChatClient,
+                maxSteps,
+                mcpTools,
+                DEFAULT_BUILTIN_TOOLS);
     }
 
     protected ToolCallAgent(
@@ -56,11 +92,16 @@ public class ToolCallAgent extends ReactAgent {
             String description,
             String systemPrompt,
             String nextStepPrompt,
+            String sessionSummarySystemPrompt,
             LLMChatClient llmChatClient,
             int maxSteps,
             List<Object> mcpTools,
             List<Object> builtinTools) {
         super(name, description, systemPrompt, nextStepPrompt, llmChatClient, maxSteps);
+        this.sessionSummarySystemPrompt =
+                sessionSummarySystemPrompt == null || sessionSummarySystemPrompt.isBlank()
+                        ? DEFAULT_SESSION_SUMMARY_SYSTEM_PROMPT
+                        : sessionSummarySystemPrompt;
         if (mcpTools != null && !mcpTools.isEmpty()) {
             this.mcpTools.addAll(mcpTools);
         }
@@ -69,14 +110,21 @@ public class ToolCallAgent extends ReactAgent {
             chatClient.addTools(List.copyOf(this.mcpTools));
         }
         toolCallingManager = ToolCallingManager.builder().build();
+        this.createChatCompletionContract = hasCreateChatCompletionTool(builtinTools);
+    }
+
+    /** Instructions for {@link com.wish.models.session.PromptRunSummarizer} when persisting this agent's prompt to session memory. */
+    public String sessionSummarySystemPrompt() {
+        return sessionSummarySystemPrompt;
     }
 
     public boolean think(ToolCallUserContext context) {
-        List<String> followUp = (nextStepPrompt != null && !nextStepPrompt.isBlank())
-                ? List.of(nextStepPrompt)
-                : Collections.emptyList();
+        List<String> followUp = buildEphemeralFollowUp(context);
 
-        Pair<ChatResponse, Prompt> response = chatClient.askWithTools(context, followUp, Collections.emptyList());
+        // Optimization: nextStepPrompt / reminders are ephemeral (persistNewMessages=false) so they are not
+        // summarized into session memory and are not mistaken for user messages on the next -c request.
+        Pair<ChatResponse, Prompt> response =
+                chatClient.askWithTools(context, followUp, Collections.emptyList(), false);
         AssistantMessage assistantMessage = response.getKey().getResult().getOutput();
         String content = assistantMessage.getText();
         List<AssistantMessage.ToolCall> toolCalls = assistantMessage.getToolCalls() != null
@@ -94,17 +142,32 @@ public class ToolCallAgent extends ReactAgent {
             log.info("Tool prepared: {} args={}", toolCall.name(), toolCall.arguments());
         }
 
-        context.addMemory(assistantMessage);
-
         if (toolCalls.isEmpty()) {
+            if (createChatCompletionContract && !context.getLastThinkResult().isBlank()) {
+                // Optimization: do not persist assistant-only draft answers; force the tool contract
+                // so session summarize can reliably extract the final answer from tool traces.
+                context.incrementAssistantOnlyStepCount();
+                log.warn(
+                        "{} assistant-only reply (not stored); require create_chat_completion (count={})",
+                        name,
+                        context.getAssistantOnlyStepCount());
+                return true;
+            }
+            context.addMemory(assistantMessage);
             return !context.getLastThinkResult().isBlank();
         }
+
+        context.resetAssistantOnlyStepCount();
+        context.addMemory(assistantMessage);
         return true;
     }
 
     public String act(ToolCallUserContext context) {
         List<AssistantMessage.ToolCall> toolCalls = context.getCurrentToolCalls();
         if (toolCalls.isEmpty()) {
+            if (createChatCompletionContract && !context.getLastThinkResult().isBlank()) {
+                return "Answer must be delivered via create_chat_completion, not assistant text.";
+            }
             return context.getLastThinkResult().isBlank()
                     ? "No content or commands to execute"
                     : context.getLastThinkResult();
@@ -132,6 +195,35 @@ public class ToolCallAgent extends ReactAgent {
     @Override
     public String act(BaseUserContext userContext) {
         return act(asToolCallContext(userContext));
+    }
+
+    protected boolean usesCreateChatCompletionContract() {
+        return createChatCompletionContract;
+    }
+
+    private List<String> buildEphemeralFollowUp(ToolCallUserContext context) {
+        List<String> followUp = new ArrayList<>();
+        if (nextStepPrompt != null && !nextStepPrompt.isBlank()) {
+            followUp.add(nextStepPrompt);
+        }
+        if (createChatCompletionContract && context.getAssistantOnlyStepCount() > 0) {
+            // Optimization: adaptive reminder nudges the model back to tool-based finalization
+            // after assistant-only drift, without polluting persisted memory.
+            followUp.add(CREATE_CHAT_COMPLETION_REMINDER);
+        }
+        return followUp;
+    }
+
+    private static boolean hasCreateChatCompletionTool(List<Object> builtinTools) {
+        if (builtinTools == null) {
+            return false;
+        }
+        for (Object tool : builtinTools) {
+            if (tool instanceof CreateChatCompletionTool) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private ToolCallUserContext asToolCallContext(BaseUserContext userContext) {

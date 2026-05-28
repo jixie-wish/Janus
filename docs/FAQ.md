@@ -25,6 +25,18 @@
 
 ---
 
+## 记忆与多步行为
+
+| 现象 | 原因 / 处理 |
+|------|-------------|
+| 带 `-c` 第二轮把「继续」「系统提示」当用户输入 | 多为 **session 分区** 在优化前写入了步内引导；执行 `<group> clear-session -c <id>` 后重试。详见 [AGENT-FLOW.md](../core/docs/AGENT-FLOW.md#记忆与多步优化optimization)。 |
+| 多步空转、每步重复类似回答 | `nextStepPrompt` 已改为 **ephemeral** 不落库；若模型连续只输出正文不调工具，`ToolCallAgent` 会跳过入库并注入 ephemeral 提醒（`create_chat_completion` 合约，Janus/tool-call 默认开启）。 |
+| 续聊看不到上一轮详细 step | **设计如此**：session 只存每轮 2 条摘要，不存完整 `Step 1…n` 轨迹；需要细节请在同一 prompt 内完成或让 Agent 写入文件。 |
+| 无 `-c` 仍感觉「记得」上次 | 检查是否误用了相同 `-c`；无 `-c` 时 `runEphemeral` 会在结束时 `chatMemory.clear`。 |
+| 升级 core 后续聊异常 | 旧进程内 Session 对象与 ChatMemory 分区可能不兼容新摘要逻辑；重启 Shell 并对相关 `-c` 执行 `clear-session`。 |
+
+---
+
 ## 模型与构建
 
 | 现象 | 处理 |

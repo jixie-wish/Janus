@@ -1,6 +1,7 @@
 package com.wish.models.context;
 
 import lombok.Getter;
+import lombok.Setter;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -14,13 +15,36 @@ public class Context {
 
     protected final String conversation;
 
+    /** When set, tools (e.g. bash) scope to this id across prompt runs in the same session. */
+    protected final String sessionId;
+
     protected final ChatMemory chatMemory;
 
     private final TokenUsageCounter tokenUsage;
     private final Map<String, TokenUsageCounter> tokenUsageByTag;
 
+    /** Messages copied from session memory at prompt start; skipped on {@link com.wish.models.session.Session#endPrompt}. */
+    @Getter
+    @Setter
+    private int sessionHydrationMessageCount;
+
+    /** Original shell/API request for this prompt run. */
+    @Getter
+    @Setter
+    private String promptRequest;
+
+    /** {@code agent.run} return value (step outputs); optional hint for summarization. */
+    @Getter
+    @Setter
+    private String runResult;
+
     public Context(String conversation, ChatMemory chatMemory) {
+        this(conversation, null, chatMemory);
+    }
+
+    public Context(String conversation, String sessionId, ChatMemory chatMemory) {
         this.conversation = conversation;
+        this.sessionId = sessionId;
         this.chatMemory = chatMemory;
         this.tokenUsage = new TokenUsageCounter();
         this.tokenUsageByTag = new LinkedHashMap<>();

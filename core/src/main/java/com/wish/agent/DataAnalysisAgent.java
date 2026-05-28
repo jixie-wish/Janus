@@ -29,6 +29,17 @@ public class DataAnalysisAgent extends ToolCallAgent {
             3. When observation with Error, review and fix it.
             """;
 
+    private static final String SESSION_SUMMARY_SYSTEM_PROMPT = """
+            You summarize one completed data-analysis task for long-term session memory.
+            Use the same language as the user's request. Structure the summary clearly:
+            - Current task goal
+            - Data sources and operations performed
+            - Key findings and metrics
+            - Outputs produced (charts, files, paths when known)
+            - Unresolved issues or suggested next steps, if any
+            Keep it concise. Do not include raw logs or stack traces.
+            """;
+
     public DataAnalysisAgent(LLMChatClient llmChatClient, int maxSteps, Path workspaceRoot) {
         this(llmChatClient, maxSteps, workspaceRoot, List.of());
     }
@@ -48,6 +59,7 @@ public class DataAnalysisAgent extends ToolCallAgent {
                 DESCRIPTION,
                 SYSTEM_PROMPT.formatted(workspaceRoot.toAbsolutePath().normalize()),
                 NEXT_STEP_PROMPT,
+                SESSION_SUMMARY_SYSTEM_PROMPT,
                 llmChatClient,
                 maxSteps,
                 mcpTools,
