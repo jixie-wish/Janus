@@ -1,6 +1,7 @@
 package com.wish.agent.base;
 
 import com.wish.llm.LLMChatClient;
+import com.wish.support.ToolCallingPromptSupport;
 import com.wish.models.context.BaseUserContext;
 import com.wish.models.context.ToolCallUserContext;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -14,6 +15,7 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 
@@ -23,7 +25,6 @@ import java.util.List;
 
 @Slf4j
 public class ToolCallAgent extends ReactAgent {
-
     private static final String NAME = "toolcall";
     private static final String DESCRIPTION = "an agent that can execute tool calls";
     private static final String SYSTEM_PROMPT =
@@ -54,7 +55,8 @@ public class ToolCallAgent extends ReactAgent {
     private static final List<Object> DEFAULT_BUILTIN_TOOLS =
             List.of(new CreateChatCompletionTool(), new TerminateTool());
 
-    private final List<Object> mcpTools = new java.util.ArrayList<>();
+    private final List<Object> mcpTools = new ArrayList<>();
+    private final List<Object> skillsTools = new ArrayList<>();
     private final ToolCallingManager toolCallingManager;
     /** Optimization: if true, enforce "answer via create_chat_completion then terminate" to reduce drift. */
     private final boolean createChatCompletionContract;
@@ -71,10 +73,14 @@ public class ToolCallAgent extends ReactAgent {
     private final String sessionSummarySystemPrompt;
 
     public ToolCallAgent(LLMChatClient llmChatClient, int maxSteps) {
-        this(llmChatClient, maxSteps, List.of());
+        this(llmChatClient, maxSteps, List.of(), List.of());
     }
 
     public ToolCallAgent(LLMChatClient llmChatClient, int maxSteps, List<Object> mcpTools) {
+        this(llmChatClient, maxSteps, mcpTools, List.of());
+    }
+
+    public ToolCallAgent(LLMChatClient llmChatClient, int maxSteps, List<Object> mcpTools, List<Object> skillsTools) {
         this(
                 NAME,
                 DESCRIPTION,
@@ -84,6 +90,7 @@ public class ToolCallAgent extends ReactAgent {
                 llmChatClient,
                 maxSteps,
                 mcpTools,
+                skillsTools,
                 DEFAULT_BUILTIN_TOOLS);
     }
 
@@ -97,6 +104,30 @@ public class ToolCallAgent extends ReactAgent {
             int maxSteps,
             List<Object> mcpTools,
             List<Object> builtinTools) {
+        this(
+                name,
+                description,
+                systemPrompt,
+                nextStepPrompt,
+                sessionSummarySystemPrompt,
+                llmChatClient,
+                maxSteps,
+                mcpTools,
+                List.of(),
+                builtinTools);
+    }
+
+    protected ToolCallAgent(
+            String name,
+            String description,
+            String systemPrompt,
+            String nextStepPrompt,
+            String sessionSummarySystemPrompt,
+            LLMChatClient llmChatClient,
+            int maxSteps,
+            List<Object> mcpTools,
+            List<Object> skillsTools,
+            List<Object> builtinTools) {
         super(name, description, systemPrompt, nextStepPrompt, llmChatClient, maxSteps);
         this.sessionSummarySystemPrompt =
                 sessionSummarySystemPrompt == null || sessionSummarySystemPrompt.isBlank()
@@ -105,9 +136,15 @@ public class ToolCallAgent extends ReactAgent {
         if (mcpTools != null && !mcpTools.isEmpty()) {
             this.mcpTools.addAll(mcpTools);
         }
+        if (skillsTools != null && !skillsTools.isEmpty()) {
+            this.skillsTools.addAll(skillsTools);
+        }
         chatClient.addTools(builtinTools);
         if (!this.mcpTools.isEmpty()) {
             chatClient.addTools(List.copyOf(this.mcpTools));
+        }
+        if (!this.skillsTools.isEmpty()) {
+            chatClient.addTools(List.copyOf(this.skillsTools));
         }
         toolCallingManager = ToolCallingManager.builder().build();
         this.createChatCompletionContract = hasCreateChatCompletionTool(builtinTools);
@@ -173,8 +210,12 @@ public class ToolCallAgent extends ReactAgent {
                     : context.getLastThinkResult();
         }
 
+        Prompt prompt = ToolCallingPromptSupport.forToolExecution(context.getCurrentChatPrompt());
+        if (prompt != null && prompt.getOptions() instanceof ToolCallingChatOptions options) {
+            log.debug("{} tool execution context keys: {}", name, options.getToolContext().keySet());
+        }
         ToolExecutionResult result =
-                toolCallingManager.executeToolCalls(context.getCurrentChatPrompt(), context.getCurrentChatResponse());
+                toolCallingManager.executeToolCalls(prompt, context.getCurrentChatResponse());
         List<Message> fullHistory = result.conversationHistory();
         context.replaceMemory(fullHistory);
         String output = extractActResult(context, fullHistory, toolCalls);

@@ -42,7 +42,19 @@ public class SWEAgent extends ToolCallAgent {
             The workspace directory is: %s
             """;
 
-    private static final String NEXT_STEP_PROMPT = "";
+    private static final String NEXT_STEP_PROMPT = """
+            Decide the single best action for this turn:
+            - If the user request is already fully satisfied (analysis/review delivered, edits done, \
+            or no further tool output is needed), call terminate(status="success") only. \
+            Do not output assistant text in that turn.
+            - If you still need information or must change the workspace, use exactly one tool call \
+            (bash, str_replace_editor, Read, Skill, etc.). Do not bundle multiple tools.
+            - Do not restate, paraphrase, or "summarize again" an answer already given in a prior step. \
+            One user-visible conclusion is enough.
+            - Do not produce two consecutive assistant-only replies. After a complete answer, \
+            the next turn MUST be terminate(status="success").
+            - Match the user's language in tool arguments and in any brief thought before a tool call.
+            """;
 
     private static final String SESSION_SUMMARY_SYSTEM_PROMPT = """
             You summarize one completed software-engineering task for long-term session memory.
@@ -65,6 +77,15 @@ public class SWEAgent extends ToolCallAgent {
     }
 
     public SWEAgent(LLMChatClient llmChatClient, int maxSteps, Path workspaceRoot, List<Object> mcpTools) {
+        this(llmChatClient, maxSteps, workspaceRoot, mcpTools, List.of());
+    }
+
+    public SWEAgent(
+            LLMChatClient llmChatClient,
+            int maxSteps,
+            Path workspaceRoot,
+            List<Object> mcpTools,
+            List<Object> skillsTools) {
         super(
                 NAME,
                 DESCRIPTION,
@@ -75,6 +96,7 @@ public class SWEAgent extends ToolCallAgent {
                 llmChatClient,
                 maxSteps,
                 mcpTools,
+                skillsTools,
                 builtinTools(workspaceRoot));
     }
 }

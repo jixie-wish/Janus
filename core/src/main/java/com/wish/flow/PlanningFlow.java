@@ -6,6 +6,7 @@ import com.wish.models.context.BaseFlowUserContext;
 import com.wish.models.context.BaseUserContext;
 import com.wish.models.context.PlanningFlowUserContext;
 import com.wish.llm.LLMChatClient;
+import com.wish.support.ToolCallingPromptSupport;
 import com.wish.tools.plan.Plan;
 import com.wish.tools.plan.PlanTool;
 import lombok.extern.slf4j.Slf4j;
@@ -198,7 +199,8 @@ public class PlanningFlow extends BaseFlow {
                 : List.of();
 
         if (!toolCalls.isEmpty()) {
-            ToolExecutionResult result = toolCallingManager.executeToolCalls(response.getRight(), response.getLeft());
+            ToolExecutionResult result = toolCallingManager.executeToolCalls(
+                    ToolCallingPromptSupport.forToolExecution(response.getRight()), response.getLeft());
             planningContext.replaceMemory(result.conversationHistory());
             if (planTool.hasPlan(planId)) {
                 log.info("Plan {} created via planning tool", planId);

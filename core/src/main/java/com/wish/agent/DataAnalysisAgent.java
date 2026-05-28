@@ -54,6 +54,15 @@ public class DataAnalysisAgent extends ToolCallAgent {
     }
 
     public DataAnalysisAgent(LLMChatClient llmChatClient, int maxSteps, Path workspaceRoot, List<Object> mcpTools) {
+        this(llmChatClient, maxSteps, workspaceRoot, mcpTools, List.of());
+    }
+
+    public DataAnalysisAgent(
+            LLMChatClient llmChatClient,
+            int maxSteps,
+            Path workspaceRoot,
+            List<Object> mcpTools,
+            List<Object> skillsTools) {
         super(
                 NAME,
                 DESCRIPTION,
@@ -63,6 +72,7 @@ public class DataAnalysisAgent extends ToolCallAgent {
                 llmChatClient,
                 maxSteps,
                 mcpTools,
+                skillsTools,
                 builtinTools(workspaceRoot, llmChatClient));
     }
 }

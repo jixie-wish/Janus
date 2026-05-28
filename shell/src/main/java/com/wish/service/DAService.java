@@ -19,8 +19,10 @@ public class DAService extends ToolCallService {
     public DAService(
             ApplicationContext applicationContext,
             @Value("${janus.agent.da.max-steps:10}") int maxSteps,
-            @Value("${janus.agent.da.workspace-root:workspace/da}") String workspaceRoot) {
-        super(applicationContext, maxSteps);
+            @Value("${janus.agent.da.workspace-root:workspace/da}") String workspaceRoot,
+            @Value("${janus.agent.default.skills.dir:.agent/default/skills}") String defaultSkillsDir,
+            @Value("${janus.agent.da.skills.dir:.agent/da/skills}") String agentSkillsDir) {
+        super(applicationContext, maxSteps, defaultSkillsDir, agentSkillsDir);
         this.workspaceRoot = WorkspaceSupport.resolveWorkspaceRoot(workspaceRoot);
     }
 
@@ -32,7 +34,7 @@ public class DAService extends ToolCallService {
 
     @Override
     protected ToolCallAgent createAgent(LLMChatClient chatClient) {
-        return new DataAnalysisAgent(chatClient, maxSteps, workspaceRoot, mcpTools);
+        return new DataAnalysisAgent(chatClient, maxSteps, workspaceRoot, mcpTools, skillTools);
     }
 
 }
