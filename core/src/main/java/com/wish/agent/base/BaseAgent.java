@@ -128,6 +128,10 @@ public abstract class BaseAgent {
         return new BaseUserContext(conversationId, chatMemory);
     }
 
+    public BaseUserContext createUserContext(String conversationId, String sessionId, ChatMemory chatMemory) {
+        return new BaseUserContext(conversationId, sessionId, chatMemory);
+    }
+
     protected void handleStuck() {
         String stuckPrompt = "Avoid repeating the same response. Try a different approach or call terminate.";
         nextStepPrompt = originalNextStepPrompt + "\n" + stuckPrompt;

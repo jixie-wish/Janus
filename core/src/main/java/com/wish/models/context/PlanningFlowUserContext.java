@@ -13,14 +13,36 @@ public class PlanningFlowUserContext extends BaseFlowUserContext {
     private BaseUserContext finalizeContext;
 
     public PlanningFlowUserContext(String conversation, ChatMemory chatMemory) {
-        this(conversation, conversation + "_plan", chatMemory);
+        super(conversation, chatMemory);
+        this.planId = conversation + "_plan";
         this.initializeContext = new BaseUserContext(planningMemoryKey("create"), chatMemory);
         this.finalizeContext = new BaseUserContext(planningMemoryKey("finalize"), chatMemory);
     }
 
-    public PlanningFlowUserContext(String conversation, String planId, ChatMemory chatMemory) {
-        super(conversation, chatMemory);
-        this.planId = planId;
+    public static PlanningFlowUserContext forSession(String conversation, String sessionId, ChatMemory chatMemory) {
+        PlanningFlowUserContext context = new PlanningFlowUserContext(conversation, sessionId, chatMemory);
+        context.initializeContext = new BaseUserContext(context.planningMemoryKey("create"), sessionId, chatMemory);
+        context.finalizeContext = new BaseUserContext(context.planningMemoryKey("finalize"), sessionId, chatMemory);
+        return context;
+    }
+
+    private PlanningFlowUserContext(String conversation, String sessionId, ChatMemory chatMemory) {
+        super(conversation, sessionId, chatMemory);
+        this.planId = conversation + "_plan";
+    }
+
+    public void clearAllMemoryPartitions(ChatMemory memory) {
+        memory.clear(conversation);
+        memory.clear(planId);
+        if (initializeContext != null) {
+            memory.clear(initializeContext.getConversation());
+        }
+        if (finalizeContext != null) {
+            memory.clear(finalizeContext.getConversation());
+        }
+        for (BaseUserContext executorContext : getFlowContext().values()) {
+            memory.clear(executorContext.getConversation());
+        }
     }
 
     public void initializePlan() {

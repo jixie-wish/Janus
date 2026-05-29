@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -29,9 +30,12 @@ class ToolCallSessionTest {
         ToolCallUserContext second = session.beginPrompt("second task");
         assertEquals("demo", second.getSessionId());
         assertNotEquals(first.getConversation(), second.getConversation());
-        assertEquals(2, second.getAllMessages().size());
+        assertEquals(3, second.getAllMessages().size());
         assertEquals("first task", second.getAllMessages().get(0).getText());
         assertEquals("done one", second.getAllMessages().get(1).getText());
+        assertInstanceOf(SystemMessage.class, second.getAllMessages().get(2));
+        assertTrue(second.getAllMessages().get(2).getText().contains("background"));
+        assertEquals(2, second.getSessionHydrationMessageCount());
 
         second.addUserMemory("second task");
         second.addMemory(new AssistantMessage("done two"));
@@ -72,8 +76,10 @@ class ToolCallSessionTest {
 
         ToolCallSession session = new ToolCallSession("demo", chatMemory, "test summary prompt");
         ToolCallUserContext context = session.beginPrompt("new");
-        assertEquals(2, context.getAllMessages().size());
+        assertEquals(3, context.getAllMessages().size());
         assertEquals("prior request", context.getAllMessages().get(0).getText());
+        assertInstanceOf(SystemMessage.class, context.getAllMessages().get(2));
+        assertEquals(2, context.getSessionHydrationMessageCount());
         session.endPrompt();
     }
 

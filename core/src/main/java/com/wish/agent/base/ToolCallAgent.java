@@ -229,6 +229,11 @@ public class ToolCallAgent extends ReactAgent {
     }
 
     @Override
+    public BaseUserContext createUserContext(String conversationId, String sessionId, ChatMemory chatMemory) {
+        return new ToolCallUserContext(conversationId, sessionId, chatMemory);
+    }
+
+    @Override
     public boolean think(BaseUserContext userContext) {
         return think(asToolCallContext(userContext));
     }

@@ -9,6 +9,7 @@ import com.wish.llm.LLMChatClient;
 import com.wish.support.ToolCallingPromptSupport;
 import com.wish.tools.plan.Plan;
 import com.wish.tools.plan.PlanTool;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -23,6 +24,7 @@ import java.util.*;
 
 /** Planning and step execution flow. */
 @Slf4j
+@Getter
 public class PlanningFlow extends BaseFlow {
 
     private static final String INITIAL_PLAN_SYSTEM_PROMPT = """
@@ -65,12 +67,12 @@ public class PlanningFlow extends BaseFlow {
             Please only execute this current step using the appropriate tools. When you're done, provide a summary of what you accomplished.
             """;
 
-    private final PlanTool planTool = new PlanTool();
+    private final PlanTool planTool;
     private final ToolCallingManager toolCallingManager;
 
     public PlanningFlow(LLMChatClient llmChatClient, Map<String, BaseAgent> agents, String primaryAgentName) {
         super(llmChatClient, agents, primaryAgentName);
-        llmChatClient.addTools(List.of(planTool));
+        this.planTool = resolvePlanTool(llmChatClient);
         toolCallingManager = ToolCallingManager.builder().build();
     }
 
@@ -80,20 +82,44 @@ public class PlanningFlow extends BaseFlow {
             String primaryAgentName,
             List<String> executorKeys) {
         super(llmChatClient, agents, primaryAgentName, executorKeys);
-        llmChatClient.addTools(List.of(planTool));
+        this.planTool = resolvePlanTool(llmChatClient);
         toolCallingManager = ToolCallingManager.builder().build();
     }
 
     public PlanningFlow(LLMChatClient llmChatClient, BaseAgent agent) {
         super(llmChatClient, agent);
-        llmChatClient.addTools(List.of(planTool));
+        this.planTool = resolvePlanTool(llmChatClient);
         toolCallingManager = ToolCallingManager.builder().build();
     }
 
     public PlanningFlow(LLMChatClient llmChatClient, List<BaseAgent> agents) {
         super(llmChatClient, agents);
-        llmChatClient.addTools(List.of(planTool));
+        this.planTool = resolvePlanTool(llmChatClient);
         toolCallingManager = ToolCallingManager.builder().build();
+    }
+
+    private static PlanTool resolvePlanTool(LLMChatClient client) {
+        PlanTool existing = findPlanTool(client);
+        if (existing != null) {
+            return existing;
+        }
+        PlanTool planTool = new PlanTool();
+        client.addTools(List.of(planTool));
+        return planTool;
+    }
+
+    private static PlanTool findPlanTool(LLMChatClient client) {
+        for (Object tool : client.getDefaultTools()) {
+            if (tool instanceof PlanTool planTool) {
+                return planTool;
+            }
+        }
+        for (Object tool : client.getExtraTools()) {
+            if (tool instanceof PlanTool planTool) {
+                return planTool;
+            }
+        }
+        return null;
     }
 
     @Override
