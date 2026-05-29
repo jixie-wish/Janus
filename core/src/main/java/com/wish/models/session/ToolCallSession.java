@@ -29,14 +29,9 @@ public class ToolCallSession extends Session<ToolCallUserContext> {
 
     @Override
     protected void initializeContext(ToolCallUserContext context, String request) {
-        int hydrated = 0;
-        for (Message message : getSessionMessages()) {
-            context.addMemory(message);
-            hydrated++;
-        }
-        // Optimization: track hydration boundary so summarize can distinguish prior session history
-        // from messages generated in this prompt run.
-        context.setSessionHydrationMessageCount(hydrated);
+        // Optimization: hydration count excludes framing so summarize can distinguish prior session
+        // history from messages generated in this prompt run.
+        hydrateSessionHistory(context);
     }
 
     @Override

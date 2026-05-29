@@ -15,9 +15,12 @@ import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
+import org.springframework.ai.tool.annotation.Tool;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -39,8 +42,27 @@ public class LLMChatClient {
         this.extraTools = new ArrayList<>();
     }
 
+    /** Adds tools whose names are not already registered on this client (default + extra). */
     public void addTools(List<Object> tools) {
-        this.extraTools.addAll(tools);
+        if (tools == null || tools.isEmpty()) {
+            return;
+        }
+        Set<String> registered = new LinkedHashSet<>();
+        registered.addAll(collectToolNames(defaultTools));
+        registered.addAll(collectToolNames(extraTools));
+        for (Object tool : tools) {
+            if (tool == null) {
+                continue;
+            }
+            String name = resolveToolName(tool);
+            if (name != null && registered.contains(name)) {
+                continue;
+            }
+            extraTools.add(tool);
+            if (name != null) {
+                registered.add(name);
+            }
+        }
     }
 
     public List<Object> getExtraTools() {
@@ -100,8 +122,9 @@ public class LLMChatClient {
                 }
                 methodTools.add(tool);
             }
-            if (!methodTools.isEmpty()) {
-                Collections.addAll(callbacks, ToolCallbacks.from(methodTools.toArray()));
+            List<Object> dedupedMethodTools = dedupeMethodToolsByName(methodTools);
+            if (!dedupedMethodTools.isEmpty()) {
+                Collections.addAll(callbacks, ToolCallbacks.from(dedupedMethodTools.toArray()));
             }
             ToolCallingChatOptions options = ToolCallingChatOptions.builder()
                     .toolCallbacks(callbacks.toArray(ToolCallback[]::new))
@@ -113,6 +136,55 @@ public class LLMChatClient {
         ChatResponse response = chatModel.call(prompt);
         userContext.onResponse(response, resolveUsageTag(response));
         return Pair.of(response, prompt);
+    }
+
+    private static List<Object> dedupeMethodToolsByName(List<Object> methodTools) {
+        LinkedHashMap<String, Object> byName = new LinkedHashMap<>();
+        List<Object> unnamed = new ArrayList<>();
+        for (Object tool : methodTools) {
+            String name = resolveToolName(tool);
+            if (name == null || name.isBlank()) {
+                unnamed.add(tool);
+                continue;
+            }
+            byName.putIfAbsent(name, tool);
+        }
+        List<Object> deduped = new ArrayList<>(byName.values());
+        deduped.addAll(unnamed);
+        return deduped;
+    }
+
+    private static Set<String> collectToolNames(List<Object> tools) {
+        Set<String> names = new LinkedHashSet<>();
+        if (tools == null) {
+            return names;
+        }
+        for (Object tool : tools) {
+            String name = resolveToolName(tool);
+            if (name != null && !name.isBlank()) {
+                names.add(name);
+            }
+        }
+        return names;
+    }
+
+    static String resolveToolName(Object tool) {
+        if (tool instanceof ToolCallback callback) {
+            return callback.getToolDefinition().name();
+        }
+        if (tool instanceof ToolCallbackProvider provider) {
+            ToolCallback[] callbacks = provider.getToolCallbacks();
+            if (callbacks != null && callbacks.length == 1) {
+                return callbacks[0].getToolDefinition().name();
+            }
+        }
+        for (Method method : tool.getClass().getMethods()) {
+            Tool annotation = method.getAnnotation(Tool.class);
+            if (annotation != null && !annotation.name().isBlank()) {
+                return annotation.name();
+            }
+        }
+        return null;
     }
 
     private static String resolveUsageTag(ChatResponse response) {

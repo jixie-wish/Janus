@@ -1,9 +1,11 @@
 package com.wish.models.session;
 
+import com.wish.models.context.BaseUserContext;
 import com.wish.models.context.Context;
 import lombok.Getter;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,6 +22,12 @@ public abstract class Session<T extends Context> {
 
     public static final String SESSION_KEY_PREFIX = "session:";
     public static final String CONTEXT_KEY_PREFIX = "context:";
+
+    /** Inserted after hydrated session summaries so the model treats them as background, not the current task. */
+    public static final String SESSION_HISTORY_FRAMING_PROMPT = """
+            The messages above are summarized prior turns in this session (background only).
+            The current task is provided in a later user message in this conversation.
+            """;
 
     private final String sessionId;
     private final ChatMemory chatMemory;
@@ -98,6 +106,26 @@ public abstract class Session<T extends Context> {
     protected List<Message> getSessionMessages() {
         List<Message> messages = chatMemory.get(getSessionMemoryKey());
         return messages == null ? List.of() : List.copyOf(messages);
+    }
+
+    /**
+     * Copies session memory into {@code target} and appends {@link #SESSION_HISTORY_FRAMING_PROMPT}.
+     *
+     * @return number of hydrated session messages (excludes framing); 0 if session memory was empty
+     */
+    protected int hydrateSessionHistory(BaseUserContext target) {
+        List<Message> sessionMessages = getSessionMessages();
+        if (sessionMessages.isEmpty()) {
+            return 0;
+        }
+        int hydrated = 0;
+        for (Message message : sessionMessages) {
+            target.addMemory(message);
+            hydrated++;
+        }
+        target.addMemory(new SystemMessage(SESSION_HISTORY_FRAMING_PROMPT));
+        target.setSessionHydrationMessageCount(hydrated);
+        return hydrated;
     }
 
     protected void clearContextMemory(T context) {

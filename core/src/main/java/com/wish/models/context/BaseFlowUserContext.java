@@ -16,14 +16,23 @@ public class BaseFlowUserContext extends Context{
         super(conversation, chatMemory);
     }
 
+    public BaseFlowUserContext(String conversation, String sessionId, ChatMemory chatMemory) {
+        super(conversation, sessionId, chatMemory);
+    }
+
     /** One {@link BaseUserContext} per executor agent (separate memory partition per agent). */
     public void setupExecutors(Set<BaseAgent> executors) {
         flowContext.clear();
         int i = 0;
+        String sessionId = getSessionId();
         for (BaseAgent agent : executors) {
             String executorConv = conversation + "_executor_" + i;
             i++;
-            flowContext.put(agent, agent.createUserContext(executorConv, chatMemory));
+            if (sessionId != null && !sessionId.isBlank()) {
+                flowContext.put(agent, agent.createUserContext(executorConv, sessionId, chatMemory));
+            } else {
+                flowContext.put(agent, agent.createUserContext(executorConv, chatMemory));
+            }
         }
     }
 

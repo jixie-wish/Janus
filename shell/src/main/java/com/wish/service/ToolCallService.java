@@ -267,7 +267,7 @@ public class ToolCallService {
         }
     }
 
-    private static void clearConversationBashSession(ToolCallAgent agent, String scopeId) {
+    protected static void clearConversationBashSession(ToolCallAgent agent, String scopeId) {
         if (agent == null || scopeId == null || scopeId.isBlank()) {
             return;
         }
